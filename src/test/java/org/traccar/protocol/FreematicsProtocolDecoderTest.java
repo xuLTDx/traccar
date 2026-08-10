@@ -48,6 +48,22 @@ public class FreematicsProtocolDecoderTest extends ProtocolTest {
         verifyNull(decoder, text(
                 "M0ZR4X0#DF=4208,SSI=-71,EV=1,TS=20866,ID=M0ZR4X0*9E"));
 
+        verifyPositions(decoder, text(
+                "1#0:68338,10D:79,11F:140221,12F:55,1A6:152024,10:6454200,"
+                        + "A:-32.727482,B:150.150301,C:159,D:0,F:5,24:1250*7A"));
+
+        verifyAttribute(decoder, text(
+                "1#0:68338,11F:140221,10:6454200,A:-32.727482,B:150.150301,C:159,D:0,F:5*7A"),
+                Position.KEY_HOURS, 140221000L);
+
+        verifyAttribute(decoder, text(
+                "1#0:68338,12F:55,10:6454200,A:-32.727482,B:150.150301,C:159,D:0,F:5*7A"),
+                Position.KEY_FUEL_LEVEL, 55);
+
+        verifyAttribute(decoder, text(
+                "1#0:68338,1A6:152024,10:6454200,A:-32.727482,B:150.150301,C:159,D:0,F:5*7A"),
+                Position.KEY_ODOMETER, 152024000L);
+
     }
 
 }

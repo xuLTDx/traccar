@@ -145,6 +145,17 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
                     case 0x10c -> position.set(Position.KEY_RPM, Integer.parseInt(value));
                     case 0x10d -> position.set(Position.KEY_OBD_SPEED, Integer.parseInt(value));
                     case 0x111 -> position.set(Position.KEY_THROTTLE, Integer.parseInt(value));
+                    // PID_RUNTIME (0x1F): engine run time in seconds, as read by the
+                    // Freematics OBD library - KEY_HOURS expects milliseconds.
+                    case 0x11f -> position.set(Position.KEY_HOURS, Long.parseLong(value) * 1000L);
+                    // PID_FUEL_LEVEL (0x2F): already converted to a 0-100 percentage by
+                    // the device (unlike the raw byte ObdDecoder.decodeData() expects),
+                    // so no further scaling here. KEY_FUEL_LEVEL (not KEY_FUEL, which is
+                    // liters) is the percentage field.
+                    case 0x12f -> position.set(Position.KEY_FUEL_LEVEL, Integer.parseInt(value));
+                    // Odometer: device sends whole kilometres (UDS/PID reads normalised
+                    // to km, or GPS-distance fallback) - KEY_ODOMETER expects meters.
+                    case 0x1a6 -> position.set(Position.KEY_ODOMETER, Long.parseLong(value) * 1000L);
                     default -> position.set(Position.PREFIX_IO + key, value);
                 }
             }
