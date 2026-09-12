@@ -32,6 +32,7 @@ import org.traccar.storage.query.Condition;
 import org.traccar.storage.query.Request;
 
 import java.util.Collection;
+import java.util.List;
 
 // A flat, shared list of known business locations (see BusinessAddress.java)
 // - not scoped per device or per user, since the same client site or office
@@ -47,9 +48,24 @@ public class BusinessAddressResource extends BaseResource {
         return storage.getObjects(BusinessAddress.class, new Request(new Columns.All()));
     }
 
+    // Upserts by name: marking a stop as a business address a second time
+    // under the same name (e.g. re-saving after this endpoint gained the
+    // `address` field, or just correcting a mistake) updates the existing
+    // row instead of creating a confusing duplicate that would still shadow
+    // it in ReportUtils.findGeofenceName()'s proximity scan.
     @POST
     public Response add(BusinessAddress address) throws StorageException {
-        address.setId(storage.addObject(address, new Request(new Columns.Exclude("id"))));
+        List<BusinessAddress> existing = storage.getObjects(BusinessAddress.class, new Request(
+                new Columns.Include("id"),
+                new Condition.Equals("name", address.getName())));
+        if (existing.isEmpty()) {
+            address.setId(storage.addObject(address, new Request(new Columns.Exclude("id"))));
+        } else {
+            address.setId(existing.get(0).getId());
+            storage.updateObject(address, new Request(
+                    new Columns.Exclude("id"),
+                    new Condition.Equals("id", address.getId())));
+        }
         return Response.ok(address).build();
     }
 

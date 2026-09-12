@@ -25,7 +25,7 @@ import org.traccar.storage.StorageName;
 @StorageName("tc_business_addresses")
 public class BusinessAddress extends BaseModel {
 
-    public static final double DEFAULT_RADIUS = 100;
+    public static final double DEFAULT_RADIUS = 200;
 
     private String name;
 
