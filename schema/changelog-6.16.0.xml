@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.4.xsd"
+  logicalFilePath="changelog-6.16.0">
+
+  <changeSet author="author" id="changelog-6.16.0">
+    <preConditions onFail="MARK_RAN">
+      <not>
+        <tableExists tableName="tc_trip_purposes"/>
+      </not>
+    </preConditions>
+
+    <createTable tableName="tc_trip_purposes">
+      <column autoIncrement="true" name="id" type="BIGINT">
+        <constraints primaryKey="true" />
+      </column>
+      <column name="deviceid" type="BIGINT">
+        <constraints nullable="false" />
+      </column>
+      <column name="startpositionid" type="BIGINT">
+        <constraints nullable="false" />
+      </column>
+      <column name="endpositionid" type="BIGINT">
+        <constraints nullable="false" />
+      </column>
+      <column name="purpose" type="VARCHAR(32)" defaultValue="business">
+        <constraints nullable="false" />
+      </column>
+      <column name="note" type="VARCHAR(512)" />
+    </createTable>
+
+    <addForeignKeyConstraint
+      baseTableName="tc_trip_purposes" baseColumnNames="deviceid"
+      constraintName="fk_trip_purposes_deviceid" onDelete="CASCADE"
+      referencedTableName="tc_devices" referencedColumnNames="id" />
+
+    <addUniqueConstraint
+      tableName="tc_trip_purposes"
+      columnNames="deviceid, startpositionid, endpositionid"
+      constraintName="uk_trip_purposes_trip" />
+
+  </changeSet>
+
+</databaseChangeLog>
