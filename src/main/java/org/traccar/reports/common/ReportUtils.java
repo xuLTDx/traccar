@@ -32,11 +32,13 @@ import org.traccar.api.security.PermissionsService;
 import org.traccar.config.Config;
 import org.traccar.config.Keys;
 import org.traccar.geocoder.Geocoder;
+import org.traccar.helper.DistanceCalculator;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.helper.model.AttributeUtil;
 import org.traccar.helper.model.PositionUtil;
 import org.traccar.helper.model.UserUtil;
 import org.traccar.model.BaseModel;
+import org.traccar.model.BusinessAddress;
 import org.traccar.model.Device;
 import org.traccar.model.Driver;
 import org.traccar.model.Event;
@@ -165,21 +167,35 @@ public class ReportUtils {
         return address;
     }
 
-    // A position already carries the ids of every geofence it falls inside
-    // (computed at ingest time by the regular geofence handler), so no new
-    // geofence-matching logic is needed here - just resolve the first one
-    // to a name, for the "kniha jazd" (trip logbook) UI to suggest a trip
-    // purpose (e.g. a geofence around a known business address suggests
-    // "Business" with the geofence's name as the note).
+    // Suggests a name for the "kniha jazd" (trip logbook) UI to prefill a
+    // trip purpose with (e.g. "Business" with this name as the note), tried
+    // in two ways:
+    //  1. A position already carries the ids of every geofence it falls
+    //     inside (computed at ingest time by the regular geofence handler),
+    //     so no new matching logic is needed - just resolve the first one.
+    //  2. Failing that, check proximity to any saved BusinessAddress (see
+    //     BusinessAddress.java) - a flat list of named points saved
+    //     directly from a Stop report row's coordinates, for cases where
+    //     drawing a precise geofence circle would be overkill.
     private String findGeofenceName(Position position) throws StorageException {
         var geofenceIds = position.getGeofenceIds();
-        if (geofenceIds == null || geofenceIds.isEmpty()) {
-            return null;
+        if (geofenceIds != null && !geofenceIds.isEmpty()) {
+            var geofence = storage.getObject(Geofence.class, new Request(
+                    new Columns.Include("name"),
+                    new Condition.Equals("id", geofenceIds.get(0))));
+            if (geofence != null) {
+                return geofence.getName();
+            }
         }
-        var geofence = storage.getObject(Geofence.class, new Request(
-                new Columns.Include("name"),
-                new Condition.Equals("id", geofenceIds.get(0))));
-        return geofence != null ? geofence.getName() : null;
+        for (var address : storage.getObjects(BusinessAddress.class, new Request(new Columns.All()))) {
+            double distance = DistanceCalculator.distance(
+                    position.getLatitude(), position.getLongitude(),
+                    address.getLatitude(), address.getLongitude());
+            if (distance <= address.getRadius()) {
+                return address.getName();
+            }
+        }
+        return null;
     }
 
     public String findDriver(Position firstPosition, Position lastPosition) {
