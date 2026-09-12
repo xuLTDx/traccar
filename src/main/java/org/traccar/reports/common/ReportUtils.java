@@ -40,6 +40,7 @@ import org.traccar.model.BaseModel;
 import org.traccar.model.Device;
 import org.traccar.model.Driver;
 import org.traccar.model.Event;
+import org.traccar.model.Geofence;
 import org.traccar.model.Position;
 import org.traccar.model.User;
 import org.traccar.reports.model.BaseReportItem;
@@ -164,6 +165,23 @@ public class ReportUtils {
         return address;
     }
 
+    // A position already carries the ids of every geofence it falls inside
+    // (computed at ingest time by the regular geofence handler), so no new
+    // geofence-matching logic is needed here - just resolve the first one
+    // to a name, for the "kniha jazd" (trip logbook) UI to suggest a trip
+    // purpose (e.g. a geofence around a known business address suggests
+    // "Business" with the geofence's name as the note).
+    private String findGeofenceName(Position position) throws StorageException {
+        var geofenceIds = position.getGeofenceIds();
+        if (geofenceIds == null || geofenceIds.isEmpty()) {
+            return null;
+        }
+        var geofence = storage.getObject(Geofence.class, new Request(
+                new Columns.Include("name"),
+                new Condition.Equals("id", geofenceIds.get(0))));
+        return geofence != null ? geofence.getName() : null;
+    }
+
     public String findDriver(Position firstPosition, Position lastPosition) {
         if (firstPosition.hasAttribute(Position.KEY_DRIVER_UNIQUE_ID)) {
             return firstPosition.getString(Position.KEY_DRIVER_UNIQUE_ID);
@@ -235,6 +253,7 @@ public class ReportUtils {
             startAddress = resolveAndPersistAddress(startTrip);
         }
         trip.setStartAddress(startAddress);
+        trip.setStartGeofenceName(findGeofenceName(startTrip));
 
         trip.setEndPositionId(endTrip.getId());
         trip.setEndLat(endTrip.getLatitude());
@@ -245,6 +264,7 @@ public class ReportUtils {
             endAddress = resolveAndPersistAddress(endTrip);
         }
         trip.setEndAddress(endAddress);
+        trip.setEndGeofenceName(findGeofenceName(endTrip));
 
         trip.setDistance(PositionUtil.calculateDistance(startTrip, endTrip, !ignoreOdometer));
         trip.setDuration(tripDuration);

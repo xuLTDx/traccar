@@ -127,4 +127,29 @@ public class TripReportItem extends BaseReportItem {
     public void setDriverName(String driverName) {
         this.driverName = driverName;
     }
+
+    // Name of a geofence covering the trip's start/end point, if any - used
+    // by the "kniha jazd" (trip logbook) UI to suggest a trip purpose (e.g.
+    // a geofence around a known business address suggests "Business" with
+    // the geofence's name as the note) without requiring the user to set up
+    // anything beyond a normal Traccar geofence.
+    private String startGeofenceName;
+
+    public String getStartGeofenceName() {
+        return startGeofenceName;
+    }
+
+    public void setStartGeofenceName(String startGeofenceName) {
+        this.startGeofenceName = startGeofenceName;
+    }
+
+    private String endGeofenceName;
+
+    public String getEndGeofenceName() {
+        return endGeofenceName;
+    }
+
+    public void setEndGeofenceName(String endGeofenceName) {
+        this.endGeofenceName = endGeofenceName;
+    }
 }
