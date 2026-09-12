@@ -148,11 +148,13 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
                     // PID_RUNTIME (0x1F): engine run time in seconds, as read by the
                     // Freematics OBD library - KEY_HOURS expects milliseconds.
                     case 0x11f -> position.set(Position.KEY_HOURS, Long.parseLong(value) * 1000L);
-                    // PID_FUEL_LEVEL (0x2F): already converted to a 0-100 percentage by
-                    // the device (unlike the raw byte ObdDecoder.decodeData() expects),
-                    // so no further scaling here. KEY_FUEL_LEVEL (not KEY_FUEL, which is
-                    // liters) is the percentage field.
-                    case 0x12f -> position.set(Position.KEY_FUEL_LEVEL, Integer.parseInt(value));
+                    // PID_FUEL_LEVEL (0x2F): NOT read via the standard OBD PID on this
+                    // device (see telelogger.ino's dedicated UDS block, DID 0x22B0 on
+                    // the VAG instrument cluster) - the device sends whole vehicles'
+                    // worth in deciliters (liters x10, e.g. 475 = 47.5 l), not a 0-100
+                    // percentage, since tank capacity isn't known to compute one.
+                    // KEY_FUEL (liters), not KEY_FUEL_LEVEL (percentage), is correct here.
+                    case 0x12f -> position.set(Position.KEY_FUEL, Integer.parseInt(value) / 10.0);
                     // Odometer: device sends whole kilometres (UDS/PID reads normalised
                     // to km, or GPS-distance fallback) - KEY_ODOMETER expects meters.
                     case 0x1a6 -> position.set(Position.KEY_ODOMETER, Long.parseLong(value) * 1000L);
