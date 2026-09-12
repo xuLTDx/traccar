@@ -32,6 +32,7 @@ import org.traccar.reports.RouteReportProvider;
 import org.traccar.reports.StopsReportProvider;
 import org.traccar.reports.SummaryReportProvider;
 import org.traccar.reports.TripsReportProvider;
+import org.traccar.reports.common.DocumentConverter;
 import org.traccar.reports.common.ReportExecutor;
 import org.traccar.reports.common.ReportMailer;
 import org.traccar.reports.model.CombinedReportItem;
@@ -44,6 +45,7 @@ import org.traccar.storage.StorageException;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -53,6 +55,9 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.StreamingOutput;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
@@ -119,6 +124,26 @@ public class ReportResource extends SimpleObjectResource<Report> {
         }
     }
 
+    // ods/pdf aren't produced natively - the report still generates its
+    // normal XLSX (via its Jxls template, same as always) into memory, then
+    // DocumentConverter shells out to a headless LibreOffice install to
+    // convert that XLSX to the requested format. See DocumentConverter.java.
+    private Response executeReportConverted(String format, ReportExecutor executor) {
+        var buffer = new ByteArrayOutputStream();
+        try {
+            executor.execute(buffer);
+            byte[] converted = DocumentConverter.convert(buffer.toByteArray(), "xlsx", format);
+            return Response.ok(converted)
+                    .type(DocumentConverter.contentType(format))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=report." + format).build();
+        } catch (StorageException | IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            throw new WebApplicationException(e);
+        }
+    }
+
     @Path("combined")
     @GET
     public Collection<CombinedReportItem> getCombined(
@@ -159,7 +184,7 @@ public class ReportResource extends SimpleObjectResource<Report> {
         });
     }
 
-    @Path("route/{type:xlsx|mail}")
+    @Path("route/{type:xlsx|ods|pdf|mail}")
     @GET
     @Produces(EXCEL)
     public Response getRouteExcel(
@@ -168,6 +193,13 @@ public class ReportResource extends SimpleObjectResource<Report> {
             @QueryParam("from") Date from,
             @QueryParam("to") Date to,
             @PathParam("type") String type) throws StorageException {
+        if (type.equals("ods") || type.equals("pdf")) {
+            permissionsService.checkRestriction(getUserId(), UserRestrictions::getDisableReports);
+            return executeReportConverted(type, stream -> {
+                actionLogger.report(request, getUserId(), false, "route", from, to, deviceIds, groupIds);
+                routeReportProvider.getExcel(stream, getUserId(), deviceIds, groupIds, from, to);
+            });
+        }
         return getRouteExcel(deviceIds, groupIds, from, to, type.equals("mail"));
     }
 
@@ -203,7 +235,7 @@ public class ReportResource extends SimpleObjectResource<Report> {
         });
     }
 
-    @Path("events/{type:xlsx|mail}")
+    @Path("events/{type:xlsx|ods|pdf|mail}")
     @GET
     @Produces(EXCEL)
     public Response getEventsExcel(
@@ -214,6 +246,13 @@ public class ReportResource extends SimpleObjectResource<Report> {
             @QueryParam("from") Date from,
             @QueryParam("to") Date to,
             @PathParam("type") String type) throws StorageException {
+        if (type.equals("ods") || type.equals("pdf")) {
+            permissionsService.checkRestriction(getUserId(), UserRestrictions::getDisableReports);
+            return executeReportConverted(type, stream -> {
+                actionLogger.report(request, getUserId(), false, "events", from, to, deviceIds, groupIds);
+                eventsReportProvider.getExcel(stream, getUserId(), deviceIds, groupIds, types, alarms, from, to);
+            });
+        }
         return getEventsExcel(deviceIds, groupIds, types, alarms, from, to, type.equals("mail"));
     }
 
@@ -260,7 +299,7 @@ public class ReportResource extends SimpleObjectResource<Report> {
         });
     }
 
-    @Path("summary/{type:xlsx|mail}")
+    @Path("summary/{type:xlsx|ods|pdf|mail}")
     @GET
     @Produces(EXCEL)
     public Response getSummaryExcel(
@@ -270,6 +309,13 @@ public class ReportResource extends SimpleObjectResource<Report> {
             @QueryParam("to") Date to,
             @QueryParam("daily") boolean daily,
             @PathParam("type") String type) throws StorageException {
+        if (type.equals("ods") || type.equals("pdf")) {
+            permissionsService.checkRestriction(getUserId(), UserRestrictions::getDisableReports);
+            return executeReportConverted(type, stream -> {
+                actionLogger.report(request, getUserId(), false, "summary", from, to, deviceIds, groupIds);
+                summaryReportProvider.getExcel(stream, getUserId(), deviceIds, groupIds, from, to, daily);
+            });
+        }
         return getSummaryExcel(deviceIds, groupIds, from, to, daily, type.equals("mail"));
     }
 
@@ -301,7 +347,7 @@ public class ReportResource extends SimpleObjectResource<Report> {
         });
     }
 
-    @Path("trips/{type:xlsx|mail}")
+    @Path("trips/{type:xlsx|ods|pdf|mail}")
     @GET
     @Produces(EXCEL)
     public Response getTripsExcel(
@@ -310,6 +356,13 @@ public class ReportResource extends SimpleObjectResource<Report> {
             @QueryParam("from") Date from,
             @QueryParam("to") Date to,
             @PathParam("type") String type) throws StorageException {
+        if (type.equals("ods") || type.equals("pdf")) {
+            permissionsService.checkRestriction(getUserId(), UserRestrictions::getDisableReports);
+            return executeReportConverted(type, stream -> {
+                actionLogger.report(request, getUserId(), false, "trips", from, to, deviceIds, groupIds);
+                tripsReportProvider.getExcel(stream, getUserId(), deviceIds, groupIds, from, to);
+            });
+        }
         return getTripsExcel(deviceIds, groupIds, from, to, type.equals("mail"));
     }
 
@@ -341,7 +394,7 @@ public class ReportResource extends SimpleObjectResource<Report> {
         });
     }
 
-    @Path("stops/{type:xlsx|mail}")
+    @Path("stops/{type:xlsx|ods|pdf|mail}")
     @GET
     @Produces(EXCEL)
     public Response getStopsExcel(
@@ -350,18 +403,47 @@ public class ReportResource extends SimpleObjectResource<Report> {
             @QueryParam("from") Date from,
             @QueryParam("to") Date to,
             @PathParam("type") String type) throws StorageException {
+        if (type.equals("ods") || type.equals("pdf")) {
+            permissionsService.checkRestriction(getUserId(), UserRestrictions::getDisableReports);
+            return executeReportConverted(type, stream -> {
+                actionLogger.report(request, getUserId(), false, "stops", from, to, deviceIds, groupIds);
+                stopsReportProvider.getExcel(stream, getUserId(), deviceIds, groupIds, from, to);
+            });
+        }
         return getStopsExcel(deviceIds, groupIds, from, to, type.equals("mail"));
     }
 
-    @Path("devices/{type:xlsx|mail}")
+    @Path("devices/{type:xlsx|ods|pdf|mail}")
     @GET
     @Produces(EXCEL)
     public Response getDevicesExcel(
             @PathParam("type") String type) throws StorageException {
         permissionsService.checkRestriction(getUserId(), UserRestrictions::getDisableReports);
+        if (type.equals("ods") || type.equals("pdf")) {
+            return executeReportConverted(type, stream -> devicesReportProvider.getExcel(stream, getUserId()));
+        }
         return executeReport(getUserId(), type.equals("mail"), stream -> {
             devicesReportProvider.getExcel(stream, getUserId());
         });
+    }
+
+    // Generic CSV -> ods/pdf conversion for reports that build their export
+    // client-side instead of via a server XLSX template - currently just the
+    // trip logbook ("kniha jazd"), whose exact legally-required column set
+    // (see LogbookReportPage.jsx) is assembled in the browser from data the
+    // existing /api/reports/trips and /api/trippurposes endpoints already
+    // provide, rather than needing a dedicated Java report provider.
+    @Path("convert/{format:ods|pdf}")
+    @POST
+    @Consumes("text/csv")
+    public Response convert(
+            @PathParam("format") String format,
+            String csv) throws IOException, InterruptedException, StorageException {
+        permissionsService.checkRestriction(getUserId(), UserRestrictions::getDisableReports);
+        byte[] converted = DocumentConverter.convert(csv.getBytes(StandardCharsets.UTF_8), "csv", format);
+        return Response.ok(converted)
+                .type(DocumentConverter.contentType(format))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=report." + format).build();
     }
 
 }
