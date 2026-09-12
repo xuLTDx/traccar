@@ -120,6 +120,50 @@ public class ReportUtils {
         return 0;
     }
 
+    // Nominatim's fair-use policy caps anonymous usage at 1 request/second,
+    // shared across the whole process regardless of which report/user
+    // triggered it - a report covering many historical positions that were
+    // never geocoded at ingest time (e.g. the first "kniha jazd" run after
+    // switching geocoder providers) would otherwise fire off a burst of
+    // calls well over that limit. Static + synchronized so it throttles
+    // globally, not per ReportUtils instance.
+    private static final Object GEOCODE_RATE_LOCK = new Object();
+    private static long lastGeocodeRequestMs;
+    private static final long GEOCODE_MIN_INTERVAL_MS = 1000;
+
+    // Resolves an address for a position that doesn't have one yet, and -
+    // unlike a plain geocoder.getAddress() call - persists it back onto the
+    // position so the same historical position never needs re-resolving on
+    // a later report view. Without this, an unreliable/rate-limited
+    // geocoder makes the same trip's address flicker between a real address
+    // and raw coordinates depending on whether that particular retry beat
+    // the rate limit.
+    private String resolveAndPersistAddress(Position position) throws StorageException {
+        if (geocoder == null || !config.getBoolean(Keys.GEOCODER_ON_REQUEST)) {
+            return null;
+        }
+        synchronized (GEOCODE_RATE_LOCK) {
+            long wait = GEOCODE_MIN_INTERVAL_MS - (System.currentTimeMillis() - lastGeocodeRequestMs);
+            if (wait > 0) {
+                try {
+                    Thread.sleep(wait);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+            lastGeocodeRequestMs = System.currentTimeMillis();
+        }
+        String address = geocoder.getAddress(position.getLatitude(), position.getLongitude(), null);
+        if (address != null) {
+            position.setAddress(address);
+            storage.updateObject(position, new Request(
+                    new Columns.Include("address"),
+                    new Condition.Equals("id", position.getId())));
+        }
+        return address;
+    }
+
     public String findDriver(Position firstPosition, Position lastPosition) {
         if (firstPosition.hasAttribute(Position.KEY_DRIVER_UNIQUE_ID)) {
             return firstPosition.getString(Position.KEY_DRIVER_UNIQUE_ID);
@@ -187,8 +231,8 @@ public class ReportUtils {
         trip.setStartLon(startTrip.getLongitude());
         trip.setStartTime(startTrip.getFixTime());
         String startAddress = startTrip.getAddress();
-        if (startAddress == null && geocoder != null && config.getBoolean(Keys.GEOCODER_ON_REQUEST)) {
-            startAddress = geocoder.getAddress(startTrip.getLatitude(), startTrip.getLongitude(), null);
+        if (startAddress == null) {
+            startAddress = resolveAndPersistAddress(startTrip);
         }
         trip.setStartAddress(startAddress);
 
@@ -197,8 +241,8 @@ public class ReportUtils {
         trip.setEndLon(endTrip.getLongitude());
         trip.setEndTime(endTrip.getFixTime());
         String endAddress = endTrip.getAddress();
-        if (endAddress == null && geocoder != null && config.getBoolean(Keys.GEOCODER_ON_REQUEST)) {
-            endAddress = geocoder.getAddress(endTrip.getLatitude(), endTrip.getLongitude(), null);
+        if (endAddress == null) {
+            endAddress = resolveAndPersistAddress(endTrip);
         }
         trip.setEndAddress(endAddress);
 
@@ -227,7 +271,8 @@ public class ReportUtils {
     }
 
     private StopReportItem calculateStop(
-            Device device, Position startStop, Position endStop, boolean ignoreOdometer) {
+            Device device, Position startStop, Position endStop,
+            boolean ignoreOdometer) throws StorageException {
 
         StopReportItem stop = new StopReportItem();
 
@@ -240,8 +285,8 @@ public class ReportUtils {
         stop.setLongitude(startStop.getLongitude());
         stop.setStartTime(startStop.getFixTime());
         String address = startStop.getAddress();
-        if (address == null && geocoder != null && config.getBoolean(Keys.GEOCODER_ON_REQUEST)) {
-            address = geocoder.getAddress(stop.getLatitude(), stop.getLongitude(), null);
+        if (address == null) {
+            address = resolveAndPersistAddress(startStop);
         }
         stop.setAddress(address);
 
