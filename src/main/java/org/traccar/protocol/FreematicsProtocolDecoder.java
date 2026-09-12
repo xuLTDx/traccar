@@ -142,7 +142,16 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
                     case 0x82 -> position.set(Position.KEY_DEVICE_TEMP, Double.parseDouble(value) / 10.0);
                     case 0x104 -> position.set(Position.KEY_ENGINE_LOAD, Integer.parseInt(value));
                     case 0x105 -> position.set(Position.KEY_COOLANT_TEMP, Integer.parseInt(value));
-                    case 0x10c -> position.set(Position.KEY_RPM, Integer.parseInt(value));
+                    // Also derives KEY_IGNITION from RPM > 0 - lets Traccar's
+                    // report.trip.useIgnition config use "engine running" as
+                    // the trip boundary instead of GPS speed, which produces
+                    // spurious near-zero-distance "trips" from GPS jitter
+                    // while the vehicle is parked with the engine off.
+                    case 0x10c -> {
+                        int rpm = Integer.parseInt(value);
+                        position.set(Position.KEY_RPM, rpm);
+                        position.set(Position.KEY_IGNITION, rpm > 0);
+                    }
                     case 0x10d -> position.set(Position.KEY_OBD_SPEED, Integer.parseInt(value));
                     case 0x111 -> position.set(Position.KEY_THROTTLE, Integer.parseInt(value));
                     // PID_RUNTIME (0x1F): engine run time in seconds, as read by the
