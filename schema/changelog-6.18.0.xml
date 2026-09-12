@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.4.xsd"
+  logicalFilePath="changelog-6.18.0">
+
+  <changeSet author="author" id="changelog-6.18.0">
+    <preConditions onFail="MARK_RAN">
+      <not>
+        <columnExists tableName="tc_business_addresses" columnName="address"/>
+      </not>
+    </preConditions>
+
+    <addColumn tableName="tc_business_addresses">
+      <column name="address" type="VARCHAR(512)" />
+    </addColumn>
+
+  </changeSet>
+
+</databaseChangeLog>

@@ -152,4 +152,30 @@ public class TripReportItem extends BaseReportItem {
     public void setEndGeofenceName(String endGeofenceName) {
         this.endGeofenceName = endGeofenceName;
     }
+
+    // The real street address saved with a matched BusinessAddress (see
+    // ReportUtils.LocationSuggestion) - null for a plain geofence match,
+    // which has no address of its own. The "kniha jazd" UI prefers this
+    // over startGeofenceName/endGeofenceName for its Start/End Address
+    // columns, since those are meant to hold an actual address, not a
+    // short label like a company name.
+    private String startBusinessAddress;
+
+    public String getStartBusinessAddress() {
+        return startBusinessAddress;
+    }
+
+    public void setStartBusinessAddress(String startBusinessAddress) {
+        this.startBusinessAddress = startBusinessAddress;
+    }
+
+    private String endBusinessAddress;
+
+    public String getEndBusinessAddress() {
+        return endBusinessAddress;
+    }
+
+    public void setEndBusinessAddress(String endBusinessAddress) {
+        this.endBusinessAddress = endBusinessAddress;
+    }
 }

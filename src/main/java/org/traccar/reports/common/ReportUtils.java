@@ -167,9 +167,16 @@ public class ReportUtils {
         return address;
     }
 
-    // Suggests a name for the "kniha jazd" (trip logbook) UI to prefill a
-    // trip purpose with (e.g. "Business" with this name as the note), tried
-    // in two ways:
+    // name: short label for the "kniha jazd" (trip logbook) UI to prefill a
+    // trip purpose note with (e.g. "Business" - name). address: the real
+    // street address to show in the logbook's Start/End Address columns
+    // instead of the generic reverse-geocoded one - only BusinessAddress
+    // matches have one (a plain Geofence is just a named shape, with no
+    // address of its own), so it's null for a geofence match.
+    public record LocationSuggestion(String name, String address) {
+    }
+
+    // Tried in two ways:
     //  1. A position already carries the ids of every geofence it falls
     //     inside (computed at ingest time by the regular geofence handler),
     //     so no new matching logic is needed - just resolve the first one.
@@ -177,14 +184,14 @@ public class ReportUtils {
     //     BusinessAddress.java) - a flat list of named points saved
     //     directly from a Stop report row's coordinates, for cases where
     //     drawing a precise geofence circle would be overkill.
-    private String findGeofenceName(Position position) throws StorageException {
+    private LocationSuggestion findGeofenceName(Position position) throws StorageException {
         var geofenceIds = position.getGeofenceIds();
         if (geofenceIds != null && !geofenceIds.isEmpty()) {
             var geofence = storage.getObject(Geofence.class, new Request(
                     new Columns.Include("name"),
                     new Condition.Equals("id", geofenceIds.get(0))));
             if (geofence != null) {
-                return geofence.getName();
+                return new LocationSuggestion(geofence.getName(), null);
             }
         }
         for (var address : storage.getObjects(BusinessAddress.class, new Request(new Columns.All()))) {
@@ -192,7 +199,7 @@ public class ReportUtils {
                     position.getLatitude(), position.getLongitude(),
                     address.getLatitude(), address.getLongitude());
             if (distance <= address.getRadius()) {
-                return address.getName();
+                return new LocationSuggestion(address.getName(), address.getAddress());
             }
         }
         return null;
@@ -269,7 +276,11 @@ public class ReportUtils {
             startAddress = resolveAndPersistAddress(startTrip);
         }
         trip.setStartAddress(startAddress);
-        trip.setStartGeofenceName(findGeofenceName(startTrip));
+        var startSuggestion = findGeofenceName(startTrip);
+        if (startSuggestion != null) {
+            trip.setStartGeofenceName(startSuggestion.name());
+            trip.setStartBusinessAddress(startSuggestion.address());
+        }
 
         trip.setEndPositionId(endTrip.getId());
         trip.setEndLat(endTrip.getLatitude());
@@ -280,7 +291,11 @@ public class ReportUtils {
             endAddress = resolveAndPersistAddress(endTrip);
         }
         trip.setEndAddress(endAddress);
-        trip.setEndGeofenceName(findGeofenceName(endTrip));
+        var endSuggestion = findGeofenceName(endTrip);
+        if (endSuggestion != null) {
+            trip.setEndGeofenceName(endSuggestion.name());
+            trip.setEndBusinessAddress(endSuggestion.address());
+        }
 
         trip.setDistance(PositionUtil.calculateDistance(startTrip, endTrip, !ignoreOdometer));
         trip.setDuration(tripDuration);

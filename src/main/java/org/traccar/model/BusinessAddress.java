@@ -47,6 +47,21 @@ public class BusinessAddress extends BaseModel {
         this.description = description;
     }
 
+    // The real street address at the time this was saved (usually copied
+    // straight from the Stop report row's own reverse-geocoded address) -
+    // shown in the trip logbook's Start/End Address columns instead of
+    // `name`, which is meant as a short label (e.g. company name) rather
+    // than a full postal address.
+    private String address;
+
+    public String getAddress() {
+        return address;
+    }
+
+    public void setAddress(String address) {
+        this.address = address;
+    }
+
     private double latitude;
 
     public double getLatitude() {
