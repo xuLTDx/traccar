@@ -16,9 +16,11 @@
 package org.traccar.api.resource;
 
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
@@ -75,6 +77,21 @@ public class TripPurposeResource extends BaseResource {
         }
 
         return Response.ok(purpose).build();
+    }
+
+    // Clears a trip's purpose back to "unset" (the logbook row then falls
+    // back to showing the geofence/business-address suggestion, if any,
+    // exactly as if it had never been reviewed).
+    @DELETE
+    @Path("{id}")
+    public Response remove(@PathParam("id") long id) throws StorageException {
+        TripPurpose purpose = storage.getObject(TripPurpose.class, new Request(
+                new Columns.All(), new Condition.Equals("id", id)));
+        if (purpose != null) {
+            permissionsService.checkPermission(Device.class, getUserId(), purpose.getDeviceId());
+            storage.removeObject(TripPurpose.class, new Request(new Condition.Equals("id", id)));
+        }
+        return Response.noContent().build();
     }
 
 }

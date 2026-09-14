@@ -48,13 +48,26 @@ public class BusinessAddressResource extends BaseResource {
         return storage.getObjects(BusinessAddress.class, new Request(new Columns.All()));
     }
 
-    // Upserts by name: marking a stop as a business address a second time
-    // under the same name (e.g. re-saving after this endpoint gained the
-    // `address` field, or just correcting a mistake) updates the existing
-    // row instead of creating a confusing duplicate that would still shadow
-    // it in ReportUtils.findGeofenceName()'s proximity scan.
+    // Two save paths share this one endpoint:
+    //  - The Stops report's "mark as business" dialog never sends an id
+    //    (id defaults to 0) - upsert by name there, so marking the same
+    //    location a second time (e.g. re-saving after this endpoint gained
+    //    the `address` field) updates the existing row instead of creating
+    //    a confusing duplicate that would still shadow it in
+    //    ReportUtils.findGeofenceName()'s proximity scan.
+    //  - The business-addresses management page edits a specific existing
+    //    row and always sends its real id - update that row directly by id
+    //    in that case, so renaming a location doesn't fall through to the
+    //    by-name lookup (which would find nothing under the new name and
+    //    insert a duplicate instead of renaming).
     @POST
     public Response add(BusinessAddress address) throws StorageException {
+        if (address.getId() > 0) {
+            storage.updateObject(address, new Request(
+                    new Columns.Exclude("id"),
+                    new Condition.Equals("id", address.getId())));
+            return Response.ok(address).build();
+        }
         List<BusinessAddress> existing = storage.getObjects(BusinessAddress.class, new Request(
                 new Columns.Include("id"),
                 new Condition.Equals("name", address.getName())));
