@@ -178,4 +178,32 @@ public class TripReportItem extends BaseReportItem {
     public void setEndBusinessAddress(String endBusinessAddress) {
         this.endBusinessAddress = endBusinessAddress;
     }
+
+    // The matched geofence's or BusinessAddress's *name* (e.g. a company
+    // name), used ONLY to suggest trip-purpose note text - never for the
+    // Start/End Address columns. Distinct from startGeofenceName/
+    // endGeofenceName, which are address-column fallbacks and must stay
+    // empty for a BusinessAddress match that has no real address stored
+    // (see ReportUtils.findGeofenceName()) - otherwise the address column
+    // would show a bare company name instead of falling through to the
+    // real reverse-geocoded address.
+    private String startSuggestedNote;
+
+    public String getStartSuggestedNote() {
+        return startSuggestedNote;
+    }
+
+    public void setStartSuggestedNote(String startSuggestedNote) {
+        this.startSuggestedNote = startSuggestedNote;
+    }
+
+    private String endSuggestedNote;
+
+    public String getEndSuggestedNote() {
+        return endSuggestedNote;
+    }
+
+    public void setEndSuggestedNote(String endSuggestedNote) {
+        this.endSuggestedNote = endSuggestedNote;
+    }
 }

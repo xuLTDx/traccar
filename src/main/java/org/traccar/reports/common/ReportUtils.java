@@ -173,7 +173,14 @@ public class ReportUtils {
     // instead of the generic reverse-geocoded one - only BusinessAddress
     // matches have one (a plain Geofence is just a named shape, with no
     // address of its own), so it's null for a geofence match.
-    public record LocationSuggestion(String name, String address) {
+    // isGeofence distinguishes a real Traccar geofence match (name()) from a
+    // BusinessAddress proximity match (name() + optionally address()) -
+    // needed because a geofence's name is fine to show in the trip
+    // logbook's Start/End Address columns (e.g. "Domov"), but a
+    // BusinessAddress match without a stored address is NOT - that should
+    // fall through to the real reverse-geocoded address instead. See
+    // calculateTrip() for how this is used.
+    public record LocationSuggestion(String name, String address, boolean isGeofence) {
     }
 
     // Tried in two ways:
@@ -191,7 +198,7 @@ public class ReportUtils {
                     new Columns.Include("name"),
                     new Condition.Equals("id", geofenceIds.get(0))));
             if (geofence != null) {
-                return new LocationSuggestion(geofence.getName(), null);
+                return new LocationSuggestion(geofence.getName(), null, true);
             }
         }
         for (var address : storage.getObjects(BusinessAddress.class, new Request(new Columns.All()))) {
@@ -199,7 +206,7 @@ public class ReportUtils {
                     position.getLatitude(), position.getLongitude(),
                     address.getLatitude(), address.getLongitude());
             if (distance <= address.getRadius()) {
-                return new LocationSuggestion(address.getName(), address.getAddress());
+                return new LocationSuggestion(address.getName(), address.getAddress(), false);
             }
         }
         return null;
@@ -278,8 +285,12 @@ public class ReportUtils {
         trip.setStartAddress(startAddress);
         var startSuggestion = findGeofenceName(startTrip);
         if (startSuggestion != null) {
-            trip.setStartGeofenceName(startSuggestion.name());
-            trip.setStartBusinessAddress(startSuggestion.address());
+            trip.setStartSuggestedNote(startSuggestion.name());
+            if (startSuggestion.isGeofence()) {
+                trip.setStartGeofenceName(startSuggestion.name());
+            } else {
+                trip.setStartBusinessAddress(startSuggestion.address());
+            }
         }
 
         trip.setEndPositionId(endTrip.getId());
@@ -293,8 +304,12 @@ public class ReportUtils {
         trip.setEndAddress(endAddress);
         var endSuggestion = findGeofenceName(endTrip);
         if (endSuggestion != null) {
-            trip.setEndGeofenceName(endSuggestion.name());
-            trip.setEndBusinessAddress(endSuggestion.address());
+            trip.setEndSuggestedNote(endSuggestion.name());
+            if (endSuggestion.isGeofence()) {
+                trip.setEndGeofenceName(endSuggestion.name());
+            } else {
+                trip.setEndBusinessAddress(endSuggestion.address());
+            }
         }
 
         trip.setDistance(PositionUtil.calculateDistance(startTrip, endTrip, !ignoreOdometer));
