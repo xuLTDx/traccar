@@ -48,6 +48,7 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
         String time = null;
         String vin = null;
         String firmware = null;
+        String variant = null;
 
         for (String pair : sentence.split(",")) {
             String[] data = pair.split("=");
@@ -62,11 +63,17 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
                 case "VIN" -> vin = value;
                 case "EV" -> event = value;
                 case "TS" -> time = value;
-                // Sent only on LOGIN (see teleclient.cpp's TeleClientUDP::connect()) -
-                // lets an external OTA push-decision service read a device's current
-                // firmware build from here instead of querying the device directly,
-                // which only works while it's reachable on the same LAN.
+                // Both sent only on LOGIN (see teleclient.cpp's TeleClientUDP::connect())
+                // - let an external OTA push-decision service read a device's current
+                // build+variant from here instead of querying the device directly,
+                // which only works while it's reachable on the same LAN. FW is the
+                // build timestamp (ordering/anti-downgrade); VARIANT is the short
+                // vehicle-module tag (e.g. "5.3-odo-PSA" vs "5.3-odo-VAG") - two
+                // profiles compiled from the same source tree can share identical
+                // timestamps' ordering semantics but are completely different
+                // binaries, so only VARIANT answers "which vehicle build is this".
                 case "FW" -> firmware = value;
+                case "VARIANT" -> variant = value;
             }
         }
 
@@ -85,7 +92,13 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
             }
             if (firmware != null) {
                 position.set(Position.KEY_VERSION_FW, firmware);
-                LOGGER.info("Freematics device {} reported firmware {}", deviceSession.getDeviceId(), firmware);
+                LOGGER.info("Freematics device {} reported firmware {} variant {}",
+                        deviceSession.getDeviceId(), firmware, variant);
+            }
+            if (variant != null) {
+                // No standard Traccar attribute for this - "otaVariant" is our own,
+                // read directly by ota_push_watcher.py, not a built-in Position key.
+                position.set("otaVariant", variant);
             }
             return position;
         }
