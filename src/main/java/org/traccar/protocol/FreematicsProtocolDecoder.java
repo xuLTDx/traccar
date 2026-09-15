@@ -16,6 +16,8 @@
 package org.traccar.protocol;
 
 import io.netty.channel.Channel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.session.DeviceSession;
 import org.traccar.NetworkMessage;
@@ -32,6 +34,8 @@ import java.util.List;
 
 public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(FreematicsProtocolDecoder.class);
+
     public FreematicsProtocolDecoder(Protocol protocol) {
         super(protocol);
     }
@@ -43,6 +47,7 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
         String event = null;
         String time = null;
         String vin = null;
+        String firmware = null;
 
         for (String pair : sentence.split(",")) {
             String[] data = pair.split("=");
@@ -57,6 +62,11 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
                 case "VIN" -> vin = value;
                 case "EV" -> event = value;
                 case "TS" -> time = value;
+                // Sent only on LOGIN (see teleclient.cpp's TeleClientUDP::connect()) -
+                // lets an external OTA push-decision service read a device's current
+                // firmware build from here instead of querying the device directly,
+                // which only works while it's reachable on the same LAN.
+                case "FW" -> firmware = value;
             }
         }
 
@@ -66,11 +76,17 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
             channel.writeAndFlush(new NetworkMessage(message, remoteAddress));
         }
 
-        if (deviceSession != null && vin != null) {
+        if (deviceSession != null && (vin != null || firmware != null)) {
             Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
             getLastLocation(position, null);
-            position.set(Position.KEY_VIN, vin);
+            if (vin != null) {
+                position.set(Position.KEY_VIN, vin);
+            }
+            if (firmware != null) {
+                position.set(Position.KEY_VERSION_FW, firmware);
+                LOGGER.info("Freematics device {} reported firmware {}", deviceSession.getDeviceId(), firmware);
+            }
             return position;
         }
 
