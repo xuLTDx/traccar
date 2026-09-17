@@ -54,6 +54,24 @@ public final class PositionUtil {
         return distance;
     }
 
+    /**
+     * Odometer estimate for devices with no real vehicle odometer signal (KEY_ODOMETER never set),
+     * calibrated against a real dashboard reading taken at some known point in time. Falls back to
+     * the raw GPS-accumulated distance (today's behavior) until a device is calibrated - set via
+     * three device attributes: odometerAnchorReal (real km at the anchor moment), odometerAnchorDistance
+     * (KEY_TOTAL_DISTANCE at that same moment), odometerFactor (correction multiplier, default 1.0).
+     */
+    public static double calibratedOdometer(Device device, Position position) {
+        double totalDistance = position.getDouble(Position.KEY_TOTAL_DISTANCE);
+        if (!device.hasAttribute("odometerAnchorReal")) {
+            return totalDistance;
+        }
+        double anchorReal = device.getDouble("odometerAnchorReal");
+        double anchorDistance = device.getDouble("odometerAnchorDistance");
+        double factor = device.getDouble("odometerFactor", 1.0);
+        return anchorReal + (totalDistance - anchorDistance) * factor;
+    }
+
     public static Stream<Position> getPositionsStreamWithExtra(
             Storage storage, long deviceId, Date from, Date to) throws StorageException {
         Stream<Position> extraStream = storage.getObjectsStream(Position.class, new Request(

@@ -112,8 +112,8 @@ public class SummaryReportProvider {
                 result.setStartOdometer(first.getDouble(Position.KEY_ODOMETER));
                 result.setEndOdometer(last.getDouble(Position.KEY_ODOMETER));
             } else {
-                result.setStartOdometer(first.getDouble(Position.KEY_TOTAL_DISTANCE));
-                result.setEndOdometer(last.getDouble(Position.KEY_TOTAL_DISTANCE));
+                result.setStartOdometer(PositionUtil.calibratedOdometer(device, first));
+                result.setEndOdometer(PositionUtil.calibratedOdometer(device, last));
             }
 
             result.setStartTime(first.getFixTime());

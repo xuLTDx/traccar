@@ -329,8 +329,8 @@ public class ReportUtils {
             trip.setStartOdometer(startTrip.getDouble(Position.KEY_ODOMETER));
             trip.setEndOdometer(endTrip.getDouble(Position.KEY_ODOMETER));
         } else {
-            trip.setStartOdometer(startTrip.getDouble(Position.KEY_TOTAL_DISTANCE));
-            trip.setEndOdometer(endTrip.getDouble(Position.KEY_TOTAL_DISTANCE));
+            trip.setStartOdometer(PositionUtil.calibratedOdometer(device, startTrip));
+            trip.setEndOdometer(PositionUtil.calibratedOdometer(device, endTrip));
         }
 
         return trip;
@@ -372,8 +372,8 @@ public class ReportUtils {
             stop.setStartOdometer(startStop.getDouble(Position.KEY_ODOMETER));
             stop.setEndOdometer(endStop.getDouble(Position.KEY_ODOMETER));
         } else {
-            stop.setStartOdometer(startStop.getDouble(Position.KEY_TOTAL_DISTANCE));
-            stop.setEndOdometer(endStop.getDouble(Position.KEY_TOTAL_DISTANCE));
+            stop.setStartOdometer(PositionUtil.calibratedOdometer(device, startStop));
+            stop.setEndOdometer(PositionUtil.calibratedOdometer(device, endStop));
         }
 
         return stop;
