@@ -42,7 +42,11 @@ def post(opener, path, obj):
     data = json.dumps(obj).encode()
     req = urllib.request.Request(f"{BASE}{path}", data=data, method="POST",
                                   headers={"Content-Type": "application/json"})
-    return json.loads(opener.open(req).read())
+    body = opener.open(req).read()
+    # Some endpoints (e.g. /api/permissions) return 204 No Content on
+    # success - no JSON body to parse. Return None for those instead of
+    # crashing on an empty response.
+    return json.loads(body) if body else None
 
 
 def get(opener, path):
