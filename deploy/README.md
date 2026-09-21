@@ -60,6 +60,43 @@ in order:
 python3 deploy/03_bootstrap_traccar_data.py
 ```
 
+## `traccar.service`
+
+Fixed copy of the systemd unit, adding `After=postgresql.service` /
+`Wants=postgresql.service` - the live unit on the server was found
+2026-09-21 to only have `After=network.target`, meaning on a reboot
+Traccar could race PostgreSQL and start before it's ready (it would likely
+recover via its own `Restart=on-failure`/`RestartSec=10`, but the ordering
+should just be correct). Deploy with:
+
+```
+sudo cp deploy/traccar.service /etc/systemd/system/traccar.service
+sudo systemctl daemon-reload
+```
+
+## Packaging (`packaging/build_deb.sh`)
+
+Wraps steps 1-2 above (NOT step 3 - see why in the package description) into
+a `traccar-server-setup` `.deb`, `Depends: postgresql, python3` so `apt
+install` pulls PostgreSQL in automatically. Must be built ON the target
+Debian server (needs `dpkg-deb`) - this repo is private, so `scp` the source
+tree over rather than `git clone`-ing it on the server, same pattern as the
+`freematics-ota` project. See that project's own `packaging/build_deb.sh`
+for the established convention this follows.
+
+```
+scp -r deploy ultd@<server>:/tmp/traccar-deploy
+ssh ultd@<server>
+cd /tmp/traccar-deploy/packaging
+bash build_deb.sh 1.0.0
+sudo dpkg -i traccar-server-setup_1.0.0_all.deb
+```
+
+**As of 2026-09-21 this package definition has NOT been built or installed
+on the real server - it's structure/logic-verified only (no `dpkg-deb`
+access from the environment that wrote it).** Build and test-install it for
+real before trusting it blindly on a future fresh server.
+
 ## Why this exists
 
 Written the same day PostgreSQL replaced the embedded H2 database (which

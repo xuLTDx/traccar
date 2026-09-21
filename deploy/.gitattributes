@@ -1,2 +1,4 @@
 *.sh text eol=lf
 *.py text eol=lf
+packaging/* text eol=lf
+traccar.service text eol=lf
