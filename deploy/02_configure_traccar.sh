@@ -79,7 +79,16 @@ cat > "$CONF" <<XML
 XML
 
 systemctl restart traccar
-sleep 3
-echo "Traccar restarted. Checking status..."
+echo "Traccar restarted. Waiting for it to come up (up to 30s - a fixed"
+echo "short sleep here previously gave a false-looking HTTP 000 on a real,"
+echo "successful restart just because the JVM hadn't finished starting yet)."
+for i in $(seq 1 30); do
+    CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8082 || true)
+    if [ "$CODE" = "200" ]; then
+        echo "Traccar is up (HTTP 200) after ${i}s."
+        break
+    fi
+    sleep 1
+done
 systemctl is-active traccar
 curl -s -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8082
