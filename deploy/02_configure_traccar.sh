@@ -1,22 +1,38 @@
 #!/bin/bash
-# Single entry point: asks for the Postgres 'traccar' role password ONCE,
-# then runs 01_bootstrap_postgres.sh (DB/role setup - idempotent, safe on
-# a re-run) and writes /opt/traccar/conf/traccar.xml with that same
-# password, so there is no possibility of the two ever going out of sync
-# (a real near-miss on 2026-09-21 when the password was asked for twice
-# across two separate script runs - fixed by consolidating here).
+# Single entry point for the Postgres + traccar.xml setup - no human ever
+# has to type or remember the 'traccar' Postgres role's password:
+#   - On a re-run against an already-configured deployment, the existing
+#     password is read straight out of the current traccar.xml and reused.
+#   - On a first-time setup, a random password is generated automatically
+#     (this is a purely internal, machine-to-machine connection - Traccar
+#     talking to its own local Postgres - nobody ever needs to type it in
+#     by hand).
+# This removes an earlier real near-miss (2026-09-21): a design that asked
+# a human to type the same password twice across two separate scripts, with
+# no shared state, where a mismatch would have broken the live DB
+# connection. Auto-detect/auto-generate removes that whole class of risk.
 #
 # Run as: sudo bash 02_configure_traccar.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
-read -s -p "Password for the 'traccar' Postgres role (new, or existing if already set up): " TRACCAR_DB_PASSWORD
-echo
+CONF=/opt/traccar/conf/traccar.xml
+
+EXISTING_PASSWORD=""
+if [ -f "$CONF" ]; then
+    EXISTING_PASSWORD=$(grep -oP "(?<=<entry key='database.password'>)[^<]*" "$CONF" || true)
+fi
+
+if [ -n "$EXISTING_PASSWORD" ]; then
+    echo "Found an existing database.password in $CONF - reusing it (no new password needed)."
+    TRACCAR_DB_PASSWORD="$EXISTING_PASSWORD"
+else
+    echo "No existing password found - generating a new random one for the 'traccar' Postgres role."
+    TRACCAR_DB_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 24)
+fi
 export TRACCAR_DB_PASSWORD
 
 bash ./01_bootstrap_postgres.sh
-
-CONF=/opt/traccar/conf/traccar.xml
 
 if [ -f "$CONF" ]; then
     cp "$CONF" "${CONF}.bak.$(date +%Y%m%d_%H%M%S)"
