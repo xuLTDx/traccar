@@ -57,17 +57,12 @@ cat > "$PKGROOT/DEBIAN/postinst" <<'EOF'
 #!/bin/sh
 set -e
 
-echo "=== traccar-server-setup: PostgreSQL bootstrap ==="
-echo "This will prompt for a new password for the 'traccar' Postgres role."
-echo "If a 'traccar' database/role already exists, this step will fail on"
-echo "the CREATE DATABASE/CREATE USER statements - that's expected on a"
-echo "re-install, not a bug; skip ahead and just re-run"
-echo "02_configure_traccar.sh by hand if you only need to update traccar.xml."
-bash /opt/traccar-setup/01_bootstrap_postgres.sh
-
-echo ""
-echo "=== traccar-server-setup: configuring /opt/traccar/conf/traccar.xml ==="
-echo "Enter the SAME password you just set above."
+echo "=== traccar-server-setup: PostgreSQL + traccar.xml setup ==="
+echo "One password prompt below - used for both the Postgres role and"
+echo "traccar.xml, so they can never end up out of sync. Safe to re-run on"
+echo "a re-install: an existing role/database is detected and left as-is"
+echo "(role password is updated to what you enter, database data is not"
+echo "touched)."
 bash /opt/traccar-setup/02_configure_traccar.sh
 
 if [ -f /lib/systemd/system/traccar.service ]; then

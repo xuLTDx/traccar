@@ -1,10 +1,20 @@
 #!/bin/bash
-# Writes /opt/traccar/conf/traccar.xml with PostgreSQL connection settings
-# and restarts Traccar. Run as: sudo bash 02_configure_traccar.sh
+# Single entry point: asks for the Postgres 'traccar' role password ONCE,
+# then runs 01_bootstrap_postgres.sh (DB/role setup - idempotent, safe on
+# a re-run) and writes /opt/traccar/conf/traccar.xml with that same
+# password, so there is no possibility of the two ever going out of sync
+# (a real near-miss on 2026-09-21 when the password was asked for twice
+# across two separate script runs - fixed by consolidating here).
+#
+# Run as: sudo bash 02_configure_traccar.sh
 set -euo pipefail
+cd "$(dirname "$0")"
 
-read -s -p "Postgres 'traccar' role password (from step 1): " TRACCAR_DB_PASSWORD
+read -s -p "Password for the 'traccar' Postgres role (new, or existing if already set up): " TRACCAR_DB_PASSWORD
 echo
+export TRACCAR_DB_PASSWORD
+
+bash ./01_bootstrap_postgres.sh
 
 CONF=/opt/traccar/conf/traccar.xml
 

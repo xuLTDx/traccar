@@ -8,23 +8,26 @@ No secrets are hardcoded in these scripts - each prompts for whatever
 password it needs at runtime (never echoed, never written to disk by the
 script itself). Safe to commit to a public-ish repo.
 
-## 1. `01_bootstrap_postgres.sh`
+**Only run `02_configure_traccar.sh` directly - it asks for the Postgres
+password ONCE and calls `01_bootstrap_postgres.sh` itself with that same
+value.** Don't run `01` standalone and then `02` separately - that asks for
+the password twice across two separate script runs with no shared state,
+and if the role already existed (so `01`'s own password entry silently had
+no effect), `02` would still go on to write whatever you typed the SECOND
+time into `traccar.xml` and restart Traccar - a real near-miss caught live
+on 2026-09-21 that could have broken the production DB connection. Both
+scripts are now idempotent (safe to re-run against an existing
+role/database - the role's password gets updated to match, the database
+itself is left untouched) specifically so this can't happen again.
 
-Installs PostgreSQL (if not already installed) and creates the `traccar`
-database + role. Run as a user with sudo. Prompts for the new `traccar`
-Postgres role's password - remember it, you'll need it again in step 2.
+## `01_bootstrap_postgres.sh` + `02_configure_traccar.sh`
 
-```
-sudo bash deploy/01_bootstrap_postgres.sh
-```
-
-## 2. `02_configure_traccar.sh`
-
-Writes `/opt/traccar/conf/traccar.xml` with the PostgreSQL connection
-(prompts for the same password from step 1), preserving the rest of this
-deployment's config (geocoder, motion threshold, port scheme - see the
-comments in the script if any of that needs to change later). Restarts
-Traccar and confirms it connects and creates its schema.
+Installs PostgreSQL (if not already installed), creates/updates the
+`traccar` database + role, and writes `/opt/traccar/conf/traccar.xml` with
+that same password - preserving the rest of this deployment's config
+(geocoder, motion threshold, port scheme - see the comments in the script
+if any of that needs to change later). Restarts Traccar and confirms it
+connects and creates its schema. Run as a user with sudo:
 
 ```
 sudo bash deploy/02_configure_traccar.sh
