@@ -92,4 +92,21 @@ public class BusinessAddress extends BaseModel {
         this.radius = radius;
     }
 
+    // Optional: the WiFi network at this location, if the device should try
+    // to connect here (2026-09-22). Deliberately SSID only, never a
+    // password - the device already has its own locally-provisioned
+    // SSID/password pairs (NVS, set via /api/control?cmd=WPWD=, never
+    // committed to git - see feedback_no_secrets_in_public_fork) and only
+    // needs to know WHICH known SSID to expect near this location, matched
+    // by name against what it already has stored on-device.
+    private String ssid;
+
+    public String getSsid() {
+        return ssid;
+    }
+
+    public void setSsid(String ssid) {
+        this.ssid = ssid;
+    }
+
 }
