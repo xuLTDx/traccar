@@ -36,6 +36,18 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(FreematicsProtocolDecoder.class);
 
+    // Defense in depth (2026-09-22): a GPS fix can never be from the future, but a
+    // position built from a device that omits the date field (0x11) - either an
+    // older firmware, or a stale backlog file recorded before a firmware update
+    // added it - silently gets "today" stitched onto its own (possibly much older)
+    // time-of-day, which can land arbitrarily in the future relative to the real
+    // fix. Confirmed 2026-09-22: a backlog replay from Sep 21 decoded straight into
+    // the middle of the next afternoon's live drive, corrupting trip/stop reports.
+    // The firmware fix (always sending PID_GPS_DATE) addresses the root cause, but
+    // this catches any position that still manages to slip through with a bogus
+    // future date instead of silently accepting it.
+    private static final long MAX_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+
     public FreematicsProtocolDecoder(Protocol protocol) {
         super(protocol);
     }
@@ -106,6 +118,18 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
         return null;
     }
 
+    private void finalizePosition(Position position, DateBuilder dateBuilder, List<Position> positions) {
+        Date time = dateBuilder.getDate();
+        if (time.getTime() > System.currentTimeMillis() + MAX_FUTURE_TOLERANCE_MS) {
+            LOGGER.warn("Freematics device {} sent an implausible future fix time {} - "
+                    + "falling back to server time (likely a backlog replay missing PID_GPS_DATE)",
+                    position.getDeviceId(), time);
+            time = new Date();
+        }
+        position.setTime(time);
+        positions.add(position);
+    }
+
     private Object decodePosition(
             Channel channel, SocketAddress remoteAddress, String sentence, String id) {
 
@@ -129,8 +153,7 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
             String value = data[1];
             if (key == 0x0) {
                 if (position != null) {
-                    position.setTime(dateBuilder.getDate());
-                    positions.add(position);
+                    finalizePosition(position, dateBuilder, positions);
                 }
                 position = new Position(getProtocolName());
                 position.setDeviceId(deviceSession.getDeviceId());
@@ -205,8 +228,7 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
             if (!position.getValid()) {
                 getLastLocation(position, null);
             }
-            position.setTime(dateBuilder.getDate());
-            positions.add(position);
+            finalizePosition(position, dateBuilder, positions);
         }
 
         return positions.isEmpty() ? null : positions;
