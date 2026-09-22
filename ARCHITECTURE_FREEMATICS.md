@@ -1,13 +1,198 @@
-# Traccar server — architecture (Freematics-relevant subset)
+# Traccar server — architecture
 
-Scope: this is **not** a full Traccar architecture doc (that's the whole
-upstream project) — it covers the path a Freematics packet takes through
-this fork, plus every custom addition built for this project (odometer
-calibration, business addresses, trip logbook, OTA server). Written
+Full architecture of how this server (`10.74.18.4`, this fork of Traccar)
+runs, top to bottom — bootstrap, the protocol plugin system (~200 decoders,
+of which this deployment enables exactly one), storage, the REST API and
+permission model, the web frontend, and then (Part B) everything specific
+to the Freematics packet path and this project's own additions. Written
 2026-09-22, verified against actual code — see file:line references.
 Companion doc: `firmware_v5/telelogger/ARCHITECTURE.md` (device side).
 
-## 1. Process tree (this fork's server, `10.74.18.4`)
+## Part A — the general platform
+
+### A1. Bootstrap (`Main.java`, `MainModule.java`)
+
+```
+main(args)
+  Locale.setDefault(ENGLISH)
+  configFile = args[last] (e.g. conf/traccar.xml)
+  run(configFile):
+    injector = Guice.createInjector(
+        new MainModule(configFile),   // Config, per-request/singleton bindings
+        new DatabaseModule(),          // Storage → DatabaseStorage (JDBC/HikariCP)
+        new WebModule())                // JAX-RS/Jetty wiring
+    for clazz in [ScheduleManager, ServerManager, WebServer, BroadcastService]:
+        injector.getInstance(clazz).start()     // each implements LifecycleObject
+    Runtime.addShutdownHook(→ stop() each service in reverse, then
+                               executorService.shutdown())
+```
+Everything in the process is a Guice-managed singleton reached through this
+one injector (`Main.getInjector()`) — there is no separate "app context"
+object; any class can `@Inject` `Config`, `Storage`, `CacheManager`, etc.
+
+### A2. Protocol plugin system — how "~200 GPS protocols" actually works
+
+```java
+// ServerManager.java:47-64
+for (Class<?> protocolClass : ClassScanner.findSubclasses(BaseProtocol.class, "org.traccar.protocol")) {
+    String protocolName = BaseProtocol.nameFromClass(protocolClass);   // "Freematics" → "freematics"
+    if (enabledProtocols == null || enabledProtocols.contains(protocolName)) {
+        if (config.getInteger(Keys.PROTOCOL_PORT.withPrefix(protocolName)) > 0) {
+            BaseProtocol protocol = injector.getInstance(protocolClass);
+            connectorList.addAll(protocol.getConnectorList());   // → Netty TrackerConnector(s)
+            protocolList.put(protocol.getName(), protocol);
+        }
+    }
+}
+```
+`src/main/java/org/traccar/protocol/` has **one `*Protocol.java` +
+`*ProtocolDecoder.java` pair per supported device brand/model** (~200
+files) — this is a pure classpath-scan plugin pattern, not a registry
+someone maintains by hand. **A protocol only actually starts listening if
+its port is explicitly configured with a value > 0** in `traccar.xml`
+(`<entry key='freematics.port'>6000</entry>`) — every other one of the
+~200 is present on the classpath but dormant, costing nothing at runtime.
+This is *why* picking a custom port matters (see the port-renumbering
+project memory): `tk103.port` defaults to 5002, `gl200.port` to 5004, etc.
+— reusing one of those defaults for something custom risks silently
+colliding with a real device's factory port if that protocol is ever
+enabled later.
+
+Every decoder extends `BaseProtocolDecoder` and returns either a single
+`Position`/`Event`/`Command` or a `Collection` of them from `decode()` —
+`FreematicsProtocolDecoder` (Part B) is one ordinary instance of this same
+pattern, nothing special about its wiring.
+
+### A3. Ingest pipeline (per-connection Netty pipeline → the shared processing chain)
+
+```mermaid
+flowchart LR
+    NET["TCP/UDP socket<br/>(one TrackerConnector per configured protocol)"]
+    PF["BasePipelineFactory<br/>IdleState → OpenChannel → NetworkMessage →<br/>StandardLogging → [protocol framer] → RemoteAddress"]
+    DEC["XProtocolDecoder.decode()<br/>bytes/text → Position/Event/Command"]
+    PH["ProcessingHandler<br/>(shared @Singleton — every protocol funnels here)"]
+    PL["18 positionHandlers, in order<br/>(see A4)"]
+    EH["12 eventHandlers<br/>(Media, Overspeed, Behavior, Fuel, Motion,<br/>Geofence, Proximity, Alarm, Ignition, …)"]
+    DB[("Storage → Postgres")]
+    CACHE[["CacheManager<br/>(in-memory last-position/device cache)"]]
+
+    NET --> PF --> DEC --> PH --> PL -->|"DatabaseHandler,<br/>last in chain"| DB
+    PL --> CACHE
+    PH --> EH -->|"may write"| DB
+```
+**Every protocol's decoded `Position` passes through the exact same shared
+`ProcessingHandler`** — this is the architectural point that matters: none
+of the 18 position handlers or 12 event handlers are protocol-specific,
+they operate purely on the generic `Position`/`Device` model regardless of
+which decoder produced the object.
+
+### A4. The 18 position handlers, what each one actually does (generic)
+
+| # | Handler | Purpose |
+|---|---|---|
+| 1 | `ComputedAttributesHandler.Early` | evaluates user-defined JS/expression attributes flagged "before" |
+| 2 | `OutdatedHandler` | drops positions older than a configured threshold |
+| 3 | `TimeHandler` | can override device/fix/server time per config (not used by this project) |
+| 4 | `GeolocationHandler` | resolves position from cell-tower/WiFi data when no GPS fix (unused here — this device always has real GPS) |
+| 5 | `HemisphereHandler` | fixes hemisphere sign errors some protocols are known to get wrong |
+| 6 | `MapMatcherHandler` | snaps position to nearest road (unused unless a map-matching provider is configured) |
+| 7 | `DistanceHandler` | computes `KEY_DISTANCE`/`KEY_TOTAL_DISTANCE` from the **CacheManager-cached last position** — Part B §7 covers a real incident from this |
+| 8 | `FilterHandler` | drops positions failing configured sanity filters (duplicate, invalid, far, static, …) |
+| 9 | `GeofenceHandler` | matches `tc_geofences`, sets `position.geofenceIds` |
+| 10 | `GeocoderHandler` | reverse-geocodes lat/lon → `address` |
+| 11 | `SpeedLimitHandler` | attaches a road speed limit if a provider is configured |
+| 12 | `MotionHandler` | derives `KEY_MOTION` (moving/stopped) — feeds trip/stop detection |
+| 13 | `ComputedAttributesHandler.Late` | same as #1, "after" hook |
+| 14 | `DriverHandler` | resolves an RFID/iButton read to a `tc_drivers` row |
+| 15 | `CopyAttributesHandler` | copies configured attributes from the device's last position forward |
+| 16 | `EngineHoursHandler` | accumulates `KEY_HOURS` from ignition state |
+| 17 | `PositionForwardingHandler` | re-sends the position to a configured external webhook/forwarder |
+| 18 | `DatabaseHandler` | `storage.addObject(position, …)` — **the actual INSERT**; also updates `tc_devices.positionId` |
+
+After `DatabaseHandler`, `cacheManager.updatePosition(position)` refreshes
+the in-memory cache handler #7 will read on the *next* position for this
+device.
+
+### A5. Storage layer (`storage/Storage.java`, `DatabaseStorage`)
+
+```java
+public abstract class Storage {
+    <T> List<T>   getObjects(Class<T> clazz, Request request);
+    <T> Stream<T> getObjectsStream(Class<T> clazz, Request request);
+    <T> long      addObject(T entity, Request request);
+    <T> void      updateObject(T entity, Request request);
+    void          removeObject(Class<?> clazz, Request request);
+    // + getPermissions/addPermission/removePermission
+}
+```
+A generic, **reflection-based mini-ORM**, not hand-written SQL per entity —
+`Request`/`Condition`/`Order`/`Columns` (from `storage.query.*`) build a
+query against whatever table a `@Table`-ish-annotated model class maps to;
+every REST resource and every internal handler goes through this same
+abstraction (`DeviceResource`/`OdometerResource` in Part B use it
+directly). Backed by `DatabaseModule` → JDBC (Postgres for this
+deployment, HikariCP pooled) + Liquibase-managed schema (`schema/
+changelog-*.xml`, applied automatically at boot — this is why a manual
+schema-folder sync matters on deploy, see A8).
+
+### A6. REST API + permissions (`api/` package)
+
+```java
+// api/BaseResource.java — every resource extends this
+class BaseResource {
+    @Context SecurityContext securityContext;   // session-cookie auth
+    @Inject  Storage storage;
+    @Inject  PermissionsService permissionsService;
+    long getUserId() { … from the authenticated principal … }
+}
+```
+A typical write endpoint (`OdometerResource`/`DeviceResource`, Part B):
+`permissionsService.checkPermission(Device.class, getUserId(), deviceId)`
+(is this user allowed to touch this device at all) then
+`permissionsService.checkEdit(getUserId(), Device.class, admin, manager)`
+(is this user's account itself read-only — the `UserRestriction.readonly`
+flag distinguishing `ota@ultd.sk` from `assist@ultd.sk`, Part B §6) — both
+checks are per-call, not cached, so a readonly account gets a clean 403
+before any business logic runs (this is how a *quick* 400 vs 403 tells you
+whether a failing write reached real logic or was rejected at the door —
+used this session to rule out a permissions problem for the odometer bug).
+
+### A7. Web server (`web/WebServer.java`, Jetty)
+
+One Jetty instance serves **both** the REST API (`/api/*`, JAX-RS via
+Jersey) **and** the static `traccar-web` production build (everything
+else, SPA fallback to `index.html`) on the same port (`:8082` here) — there
+is no separate static file server; `web/mapbox-gl-rtl-text.js` living
+outside the normal Vite build output (Part B §9's deploy gotcha) is served
+from this same static root.
+
+### A8. traccar-web frontend (`traccar-web` repo)
+
+```
+src/
+ ├─ store/          Redux Toolkit: session, devices, events, motion,
+ │                   geofences, groups, drivers, maintenances, calendars
+ ├─ map/             MapView + MapPositions/MapMarkers (maplibre-gl)
+ ├─ main/            device list, EventsDrawer, top-level shell
+ ├─ reports/         Trips/Stops/Summary/Chart/Logbook/BusinessAddresses/…
+ │                   report pages — each POSTs to a matching
+ │                   /api/reports/* Java endpoint
+ ├─ settings/        Server/User/Device/Group/Geofence/… CRUD pages
+ └─ common/
+     ├─ util/formatter.js      value formatting (Part B §11)
+     ├─ util/preferences.js    usePreference()/useAttributePreference()
+     └─ attributes/            per-entity known-attribute lists (dropdowns
+                                 in the generic "Attributes" editor)
+```
+State/preference precedence (`usePreference`/`useAttributePreference`):
+`server.forceSettings` ? server wins over user : user wins over server —
+either way falling through to a hardcoded default if neither has the key.
+Deploy: `npx vite build` → static output served by A7's Jetty instance —
+no separate Node server in production.
+
+## Part B — this project's specific packet path &amp; additions
+
+### B1. Process tree (this fork's server, `10.74.18.4`)
 
 ```
 systemd: traccar.service                    (User=traccar, /opt/traccar → /home/traccar symlink)
@@ -25,7 +210,7 @@ systemd: traccar.service                    (User=traccar, /opt/traccar → /hom
 `freematics-ota` is a standalone Python service (not part of the Java
 process) — see §6.
 
-## 2. One UDP packet → one DB row (Netty pipeline)
+## B2. One UDP packet → one DB row (Netty pipeline)
 
 ```
 UDP datagram, port 6000
@@ -87,7 +272,7 @@ cacheManager.updatePosition(position)     — updates the IN-MEMORY cache
 tc_devices.positionid = position.id       — via DatabaseHandler
 ```
 
-## 3. Data model (this project's relevant tables; column types confirmed
+## B3. Data model (this project's relevant tables; column types confirmed
 from `schema/changelog-4.0-clean.xml` + `6.17.0.xml` — **note: this server
 runs Postgres, and `attributes` columns are `character varying`, NOT
 `jsonb`, on both `tc_devices` and `tc_servers` — never use jsonb `||`/
@@ -129,7 +314,7 @@ tc_servers.attributes VARCHAR  -- speedUnit, distanceUnit, timezone,
                                  precedence, traccar-web side, §8)
 ```
 
-## 4. Odometer calibration (this fork's own feature, NOT upstream)
+## B4. Odometer calibration (this fork's own feature, NOT upstream)
 
 ```java
 // helper/model/PositionUtil.java
@@ -177,7 +362,7 @@ position that might land between a DB wipe and a service restart (see
 `DistanceHandler`'s cache read in §2 step 7 — confirmed reproducing this
 race twice in one night before switching to this endpoint).
 
-## 5. Business addresses vs. geofences — two unrelated matching systems
+## B5. Business addresses vs. geofences — two unrelated matching systems
 
 - **`tc_geofences`** (upstream Traccar, polygon/line drawing) — matched by
   `GeofenceHandler` at ingest time, ids land in `position.geofenceIds`.
@@ -190,7 +375,7 @@ race twice in one night before switching to this endpoint).
   `ota_server.py`'s `locations.csv` endpoint (§6) for the firmware's
   geofence-WiFi feature — **not** read anywhere else in the Java backend.
 
-## 6. `freematics-ota` (separate Python service, `/opt/freematics-ota`)
+## B6. `freematics-ota` (separate Python service, `/opt/freematics-ota`)
 
 ```
 ota_server.py            HTTPS :6001, TLSThreadingHTTPServer (each accepted
@@ -224,7 +409,7 @@ memory `project_ota_push_dedicated_account.md`):
   because some operations (accumulator reset, §4) are *only* correct
   through the API — a DB-only fix cannot avoid the in-memory-cache race.
 
-## 7. The PID_GPS_DATE incident (2026-09-22) — decoder-side half
+## B7. The PID_GPS_DATE incident (2026-09-22) — decoder-side half
 
 `decodePosition()`'s `dateBuilder = new DateBuilder(new Date())` seeds
 **today's date** as the default, overwritten only if the packet carries an
@@ -238,7 +423,7 @@ only prevents the specific failure mode that corrupted trip/stop detection
 this session (an old backlog record's `fixTime` landing hours-to-days in
 the future, colliding visibly with live data arriving at that real moment).
 
-## 8. traccar-web: date/time/unit preference resolution
+## B8. traccar-web: date/time/unit preference resolution
 
 ```js
 // common/util/preferences.js
@@ -263,7 +448,7 @@ useAttributePreference(key, default)   // for .attributes.<key> fields
   the whole fleet/server/users being in Slovakia.
 ```
 
-## 9. Deploy (see project memory `project_traccar_freematics_decoder.md`
+## B9. Deploy (see project memory `project_traccar_freematics_decoder.md`
 for the full step-by-step) — summary only:
 
 - Backend: `gradlew.bat assemble` → scp jar → `sudo /opt/traccar/deploy.sh`
