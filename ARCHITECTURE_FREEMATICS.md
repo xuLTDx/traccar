@@ -441,7 +441,9 @@ within `report.trip.minDistance` 200 m for `minDuration` 180 s) and ignores
 engine off, so no 180 s of parked positions ever arrive and drives merge
 across parkings. The old `MotionProcessor` (newLogic=false) honours
 `useIgnition` (explicit ignition=false ends the trip) and
-`minimalNoDataDuration` (3600 s).
+`minimalNoDataDuration` (3600 s). **Deployed 2026-09-25:** `traccar.xml` has
+`report.trip.newLogic=false` (via `deploy.sh`) - the 2026-09-25 drives then
+report correctly (2 trips + a 63 min stop instead of one 82 min trip).
 
 ## B8. traccar-web: date/time/unit preference resolution
 
