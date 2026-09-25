@@ -118,7 +118,28 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
         return null;
     }
 
-    private void finalizePosition(Position position, DateBuilder dateBuilder, List<Position> positions) {
+    // A record without a GPS fix (2026-09-25): if it carries its own time (the
+    // firmware stamps fix-less records with its GPS-synced clock), keep that
+    // time and borrow only the last known coordinates, valid=false. Marking it
+    // outdated instead makes OutdatedHandler overwrite the time with the last
+    // FIX time too - on 2026-09-25 that moved 80 s of a drive (ignition on,
+    // before the first fix after a standby wake) back to the previous parking
+    // time, and Traccar merged both drives across the stop. Without a time of
+    // its own the old outdated path stays: server receive time would be wrong
+    // for SD backlog replays.
+    private void finalizePosition(
+            Position position, DateBuilder dateBuilder, boolean hasTime, List<Position> positions) {
+        if (!position.getValid()) {
+            Position last = hasTime && getCacheManager() != null
+                    ? getCacheManager().getPosition(position.getDeviceId()) : null;
+            if (last != null) {
+                position.setLatitude(last.getLatitude());
+                position.setLongitude(last.getLongitude());
+                position.setAltitude(last.getAltitude());
+            } else {
+                getLastLocation(position, null);
+            }
+        }
         Date time = dateBuilder.getDate();
         if (time.getTime() > System.currentTimeMillis() + MAX_FUTURE_TOLERANCE_MS) {
             LOGGER.warn("Freematics device {} sent an implausible future fix time {} - "
@@ -141,6 +162,7 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
         List<Position> positions = new LinkedList<>();
         Position position = null;
         DateBuilder dateBuilder = null;
+        boolean hasTime = false;
 
         for (String pair : sentence.split(",")) {
             String[] data = pair.split("[=:]");
@@ -153,11 +175,12 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
             String value = data[1];
             if (key == 0x0) {
                 if (position != null) {
-                    finalizePosition(position, dateBuilder, positions);
+                    finalizePosition(position, dateBuilder, hasTime, positions);
                 }
                 position = new Position(getProtocolName());
                 position.setDeviceId(deviceSession.getDeviceId());
                 dateBuilder = new DateBuilder(new Date());
+                hasTime = false;
             } else if (position != null) {
                 switch (key) {
                     case 0x11 -> {
@@ -168,6 +191,7 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
                                 Integer.parseInt(value.substring(4)));
                     }
                     case 0x10 -> {
+                        hasTime = true;
                         value = ("00000000" + value).substring(value.length());
                         dateBuilder.setTime(
                                 Integer.parseInt(value.substring(0, 2)),
@@ -225,10 +249,7 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
         }
 
         if (position != null) {
-            if (!position.getValid()) {
-                getLastLocation(position, null);
-            }
-            finalizePosition(position, dateBuilder, positions);
+            finalizePosition(position, dateBuilder, hasTime, positions);
         }
 
         return positions.isEmpty() ? null : positions;

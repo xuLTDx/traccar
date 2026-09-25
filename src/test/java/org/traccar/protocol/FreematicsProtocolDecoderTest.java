@@ -48,6 +48,14 @@ public class FreematicsProtocolDecoderTest extends ProtocolTest {
         verifyNull(decoder, text(
                 "M0ZR4X0#DF=4208,SSI=-71,EV=1,TS=20866,ID=M0ZR4X0*9E"));
 
+        // no GPS fix, time from the device clock (2026-09-25 firmware)
+        verifyPositions(decoder, false, text(
+                "ZKUCA42T#0:28123,10:11172500,11:250926,24:1495,10C:1400*00"));
+
+        verifyAttribute(decoder, text(
+                "ZKUCA42T#0:28123,10:11172500,11:250926,24:1495,10C:1400*00"),
+                Position.KEY_RPM, 1400);
+
         verifyPositions(decoder, text(
                 "1#0:68338,10D:79,11F:140221,12F:55,1A6:152024,10:6454200,"
                         + "A:-32.727482,B:150.150301,C:159,D:0,F:5,24:1250*7A"));
