@@ -72,7 +72,7 @@ public class TripPurposeResource extends BaseResource {
         } else {
             purpose.setId(existing.get(0).getId());
             storage.updateObject(purpose, new Request(
-                    new Columns.Include("purpose", "note"),
+                    new Columns.Include("purpose", "note", "startAddress", "endAddress"),
                     new Condition.Equals("id", purpose.getId())));
         }
 

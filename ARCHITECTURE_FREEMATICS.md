@@ -445,6 +445,19 @@ across parkings. The old `MotionProcessor` (newLogic=false) honours
 `report.trip.newLogic=false` (via `deploy.sh`) - the 2026-09-25 drives then
 report correctly (2 trips + a 63 min stop instead of one 82 min trip).
 
+**Trip start = engine start (2026-09-25, `ReportUtils.slowTripsAndStops`,
+old logic only, `useIgnition`):** a trip's start moves back to the first
+position of the unbroken ignition=true run just before the first moving
+position (never before the previous stop) - so a trip starts at the parking
+place, including fix-less positions sent before the first GPS fix.
+
+**Logbook address override (changelog-6.20.0):** `tc_trip_purposes` gained
+`startaddress`/`endaddress`; the logbook dialog lets a trip's start/end be
+set to a business address, shown and exported instead of the derived one.
+Caveat: a purpose/override is keyed by (deviceId, startPositionId,
+endPositionId) - anything that changes a trip's boundary positions (trip
+logic change, deleted positions) detaches it; re-key via POST + DELETE.
+
 ## B8. traccar-web: date/time/unit preference resolution
 
 ```js

@@ -466,6 +466,16 @@ public class ReportUtils {
             }
         } else {
             MotionState motionState = new MotionState();
+            // With useIgnition a trip starts when the engine starts, not at the
+            // first moving position: before its first GPS fix a vehicle sends
+            // fix-less positions (ignition on, speed 0, last known = parking
+            // coordinates), and the first moving fix can already be ~1 km away
+            // (2026-09-25). ignitionRunStart = first position of the current
+            // unbroken ignition=true run (a position without the attribute
+            // breaks it too); never earlier than the previous stop.
+            boolean useIgnition = tripsConfig.getUseIgnition();
+            Position ignitionRunStart = null;
+            Date lastStopTime = null;
 
             try (var stream = PositionUtil.getPositionsStream(storage, device.getId(), from, to, 0)) {
                 for (var iterator = stream.iterator(); iterator.hasNext();) {
@@ -481,11 +491,32 @@ public class ReportUtils {
                     }
                     maxSpeed = Math.max(maxSpeed, position.getSpeed());
                     positionMap.put(position.getId(), position);
+                    if (position.hasAttribute(Position.KEY_IGNITION) && position.getBoolean(Position.KEY_IGNITION)) {
+                        if (ignitionRunStart == null) {
+                            ignitionRunStart = position;
+                        }
+                    } else {
+                        ignitionRunStart = null;
+                    }
                     boolean motion = position.getBoolean(Position.KEY_MOTION);
                     MotionProcessor.updateState(motionState, lastPosition, position, motion, tripsConfig);
-                    if (motionState.getEvent() != null) {
-                        motionState.getEvent().set("maxSpeed", maxSpeed);
-                        events.add(motionState.getEvent());
+                    Event event = motionState.getEvent();
+                    if (event != null) {
+                        if (useIgnition && ignitionRunStart != null
+                                && event.getType().equals(Event.TYPE_DEVICE_MOVING)) {
+                            Position motionStart = positionMap.get(event.getPositionId());
+                            if (motionStart != null
+                                    && ignitionRunStart.getFixTime().before(motionStart.getFixTime())
+                                    && (lastStopTime == null || ignitionRunStart.getFixTime().after(lastStopTime))) {
+                                event.setPositionId(ignitionRunStart.getId());
+                                event.setEventTime(ignitionRunStart.getFixTime());
+                            }
+                        }
+                        if (event.getType().equals(Event.TYPE_DEVICE_STOPPED)) {
+                            lastStopTime = event.getEventTime();
+                        }
+                        event.set("maxSpeed", maxSpeed);
+                        events.add(event);
                         maxSpeed = 0;
                     }
                     lastPosition = position;

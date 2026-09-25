@@ -80,4 +80,28 @@ public class TripPurpose extends BaseModel {
         this.note = note;
     }
 
+    // Manually chosen logbook start/end address (a business address) that
+    // overrides the one derived from the trip's start/end position - null =
+    // derived as usual. For trips whose first/last GPS fix is away from the
+    // real place (e.g. no fix yet when leaving a parking spot).
+    private String startAddress;
+
+    public String getStartAddress() {
+        return startAddress;
+    }
+
+    public void setStartAddress(String startAddress) {
+        this.startAddress = startAddress;
+    }
+
+    private String endAddress;
+
+    public String getEndAddress() {
+        return endAddress;
+    }
+
+    public void setEndAddress(String endAddress) {
+        this.endAddress = endAddress;
+    }
+
 }
