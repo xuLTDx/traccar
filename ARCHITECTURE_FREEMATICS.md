@@ -423,6 +423,26 @@ only prevents the specific failure mode that corrupted trip/stop detection
 this session (an old backlog record's `fixTime` landing hours-to-days in
 the future, colliding visibly with live data arriving at that real moment).
 
+### B7b. Records without a GPS fix (2026-09-25, `6df870ba7`)
+
+`getLastLocation()` only marks a position outdated; `OutdatedHandler` then
+overwrites its coordinates AND fixTime with the last fix. On 2026-09-25
+that moved 80 s of a drive (before the first fix after a standby wake,
+ignition on) back to the previous parking time. Now a fix-less record that
+carries its own time (0x10 - the firmware stamps these with its GPS-synced
+clock) keeps that time and gets only the cached last coordinates,
+valid=false, not outdated. A record without any time keeps the outdated
+path (server receive time would be wrong for SD backlog replays).
+
+**Trip detection caveat (verified in code 2026-09-25):** `report.trip.newLogic`
+defaults to TRUE → `NewMotionProcessor`, which is purely geometric (a stop =
+within `report.trip.minDistance` 200 m for `minDuration` 180 s) and ignores
+`report.trip.useIgnition` entirely. The firmware enters standby ~17 s after
+engine off, so no 180 s of parked positions ever arrive and drives merge
+across parkings. The old `MotionProcessor` (newLogic=false) honours
+`useIgnition` (explicit ignition=false ends the trip) and
+`minimalNoDataDuration` (3600 s).
+
 ## B8. traccar-web: date/time/unit preference resolution
 
 ```js
