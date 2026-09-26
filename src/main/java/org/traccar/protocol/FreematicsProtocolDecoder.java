@@ -243,6 +243,16 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
                     // Odometer: device sends whole kilometres (UDS/PID reads normalised
                     // to km, or GPS-distance fallback) - KEY_ODOMETER expects meters.
                     case 0x1a6 -> position.set(Position.KEY_ODOMETER, Long.parseLong(value) * 1000L);
+                    // Engine start/stop decided by the box (2026-09-26): 1 = start,
+                    // 2 = stop. Start-stop at a light is NOT a stop (the engine ECU
+                    // still answers); a stop's record is timed at the last RPM > 0.
+                    case 0x380 -> {
+                        boolean start = "1".equals(value);
+                        position.set("engineEvent", start ? "start" : "stop");
+                        position.set(Position.KEY_IGNITION, start);
+                    }
+                    case 0x381 -> position.set("engineEventTime", Long.parseLong(value)); // unix seconds, 0 = no clock
+                    case 0x382 -> position.set("sdBacklog", !"0".equals(value)); // SD data not yet delivered
                     default -> position.set(Position.PREFIX_IO + key, value);
                 }
             }
