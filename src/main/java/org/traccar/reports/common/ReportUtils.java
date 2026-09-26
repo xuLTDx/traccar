@@ -392,8 +392,208 @@ public class ReportUtils {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Engine-based trip logbook (2026-09-26) - used whenever useIgnition is
+    // on, for every range (no fast path), so trips, stops, the logbook and
+    // its exports all come from this one computation:
+    //  - a trip = engine start -> engine stop. Engine on = ignition true,
+    //    or (no ignition attribute) battery >= ENGINE_ON_VOLTAGE; a
+    //    position without either keeps the previous state. Engine-off
+    //    gaps shorter than MERGE_GAP (start-stop, a short halt) join one
+    //    trip; an engine run in which the vehicle never moved is no trip.
+    //  - a trip starts where the previous one ended (position, address,
+    //    business address), unless it starts > CONTINUITY_RADIUS away
+    //    (the vehicle moved without the tracker).
+    //  - the odometer is a chain from the calibration anchor: start = the
+    //    previous trip's end, end = start + trip distance x factor. Parking
+    //    (GPS jitter, catch-up duplicates) never adds to it, and a trip
+    //    shows the same numbers in any report range. Trip distance = path
+    //    over the trip's positions in fixTime order, duplicates skipped.
+    // ------------------------------------------------------------------
+    private static final double ENGINE_ON_VOLTAGE = 12.8; // = the Freematics firmware's threshold
+    private static final double MAX_SYSTEM_VOLTAGE = 20;  // above: not a 12 V vehicle reading
+    private static final long MERGE_GAP = 5 * 60 * 1000;
+    private static final long SPLIT_GAP = 30 * 60 * 1000; // no data for this long ends a trip
+    private static final double MIN_TRIP_DISTANCE = 200;  // meters
+    private static final double CONTINUITY_RADIUS = 500;  // meters
+    private static final long CHAIN_LOOKBACK = 7L * 24 * 3600 * 1000; // context without an anchor
+
+    private static final class EngineRun {
+        private Position start;
+        private Position lastOn;
+        private double distance;
+        private double maxSpeed;
+        private Position lastPoint; // last position with coordinates, for the path
+    }
+
+    private static Boolean engineState(Position position) {
+        if (position.hasAttribute(Position.KEY_IGNITION)) {
+            return position.getBoolean(Position.KEY_IGNITION);
+        }
+        if (position.hasAttribute(Position.KEY_BATTERY)) {
+            double battery = position.getDouble(Position.KEY_BATTERY);
+            return battery >= ENGINE_ON_VOLTAGE && battery < MAX_SYSTEM_VOLTAGE;
+        }
+        return null;
+    }
+
+    private static boolean hasCoordinates(Position position) {
+        return position.getLatitude() != 0 || position.getLongitude() != 0;
+    }
+
+    private static void addPathPoint(EngineRun run, Position position) {
+        if (!hasCoordinates(position)) {
+            return;
+        }
+        if (run.lastPoint != null) {
+            run.distance += DistanceCalculator.distance(
+                    run.lastPoint.getLatitude(), run.lastPoint.getLongitude(),
+                    position.getLatitude(), position.getLongitude());
+        }
+        run.lastPoint = position;
+    }
+
+    private List<EngineRun> detectEngineRuns(Device device, Date from, Date to) throws StorageException {
+        List<EngineRun> runs = new ArrayList<>();
+        EngineRun current = null;
+        boolean on = false;
+        Date lastFixTime = null;
+        Position previous = null;
+        try (var stream = PositionUtil.getPositionsStream(storage, device.getId(), from, to, 0)) {
+            for (var iterator = stream.iterator(); iterator.hasNext();) {
+                Position position = iterator.next();
+                if (lastFixTime != null && position.getFixTime().equals(lastFixTime)) {
+                    continue; // duplicate (e.g. an SD catch-up replay of a sample that went out live)
+                }
+                if (previous != null && current != null
+                        && position.getFixTime().getTime() - previous.getFixTime().getTime() > SPLIT_GAP) {
+                    current = null;
+                    on = false;
+                }
+                lastFixTime = position.getFixTime();
+                previous = position;
+                Boolean state = engineState(position);
+                if (state != null) {
+                    on = state;
+                }
+                if (on) {
+                    if (current != null
+                            && position.getFixTime().getTime() - current.lastOn.getFixTime().getTime() <= MERGE_GAP) {
+                        addPathPoint(current, position); // running, or back on after a short stop
+                    } else {
+                        current = new EngineRun();
+                        current.start = position;
+                        runs.add(current);
+                        addPathPoint(current, position);
+                    }
+                    current.lastOn = position;
+                    current.maxSpeed = Math.max(current.maxSpeed, position.getSpeed());
+                }
+            }
+        }
+        runs.removeIf(run -> run.distance < MIN_TRIP_DISTANCE);
+        return runs;
+    }
+
+    private static Date parseDate(String value) {
+        try {
+            return value != null ? Date.from(java.time.Instant.parse(value)) : null;
+        } catch (java.time.format.DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T extends BaseReportItem> List<T> engineTripsAndStops(
+            Device device, Date from, Date to, Class<T> reportClass) throws StorageException {
+
+        boolean ignoreOdometer = new TripsConfig(
+                new AttributeUtil.StorageProvider(config, storage, permissionsService, device)).getIgnoreOdometer();
+        Date anchorTime = device.hasAttribute("odometerAnchorReal")
+                ? parseDate(device.getString("odometerAnchorTime")) : null;
+        double factor = device.getDouble("odometerFactor", 1.0);
+
+        // computed from the anchor (or a week back) so the chain and the
+        // "previous trip" are the same whatever range is requested
+        Date chainFrom = anchorTime != null && anchorTime.before(from)
+                ? anchorTime : new Date(from.getTime() - CHAIN_LOOKBACK);
+        List<EngineRun> runs = detectEngineRuns(device, chainFrom, to);
+
+        List<TripReportItem> trips = new ArrayList<>();
+        double odometer = anchorTime != null ? device.getDouble("odometerAnchorReal") : 0;
+        TripReportItem previousTrip = null;
+        for (EngineRun run : runs) {
+            TripReportItem trip = calculateTrip(device, run.start, run.lastOn, run.maxSpeed, ignoreOdometer);
+            trip.setDistance(run.distance);
+            if (trip.getDuration() > 0) {
+                trip.setAverageSpeed(UnitsConverter.knotsFromMps(run.distance * 1000 / trip.getDuration()));
+            }
+            if (previousTrip != null && DistanceCalculator.distance(
+                    previousTrip.getEndLat(), previousTrip.getEndLon(),
+                    trip.getStartLat(), trip.getStartLon()) <= CONTINUITY_RADIUS) {
+                trip.setStartLat(previousTrip.getEndLat());
+                trip.setStartLon(previousTrip.getEndLon());
+                trip.setStartAddress(previousTrip.getEndAddress());
+                trip.setStartBusinessAddress(previousTrip.getEndBusinessAddress());
+                trip.setStartGeofenceName(previousTrip.getEndGeofenceName());
+                trip.setStartSuggestedNote(previousTrip.getEndSuggestedNote());
+            }
+            double realStart = run.start.getDouble(Position.KEY_ODOMETER);
+            double realEnd = run.lastOn.getDouble(Position.KEY_ODOMETER);
+            if (!ignoreOdometer && realStart != 0 && realEnd != 0) {
+                odometer = realEnd; // a real or closed-segment reading resets the chain
+            } else if (anchorTime != null && !run.start.getFixTime().before(anchorTime)) {
+                trip.setStartOdometer(odometer);
+                odometer += run.distance * factor;
+                trip.setEndOdometer(odometer);
+            }
+            trips.add(trip);
+            previousTrip = trip;
+        }
+
+        if (reportClass.equals(TripReportItem.class)) {
+            List<T> result = new ArrayList<>();
+            for (TripReportItem trip : trips) {
+                if (trip.getEndTime().after(from) && trip.getStartTime().before(to)) {
+                    result.add((T) trip);
+                }
+            }
+            return result;
+        }
+
+        // stops = the gaps between trips, at the previous trip's end
+        List<T> result = new ArrayList<>();
+        for (int i = 0; i < runs.size(); i++) {
+            Position stopStart = runs.get(i).lastOn;
+            Position stopEnd = i + 1 < runs.size()
+                    ? runs.get(i + 1).start : PositionUtil.getEdgePosition(storage, device.getId(), from, to, true);
+            if (stopEnd == null || !stopEnd.getFixTime().after(stopStart.getFixTime())) {
+                continue;
+            }
+            if (!stopEnd.getFixTime().after(from) || !stopStart.getFixTime().before(to)) {
+                continue;
+            }
+            StopReportItem stop = calculateStop(device, stopStart, stopEnd, ignoreOdometer);
+            TripReportItem trip = trips.get(i);
+            stop.setLatitude(trip.getEndLat());
+            stop.setLongitude(trip.getEndLon());
+            stop.setAddress(trip.getEndAddress());
+            if (trip.getEndOdometer() != 0) {
+                stop.setStartOdometer(trip.getEndOdometer());
+                stop.setEndOdometer(trip.getEndOdometer());
+            }
+            result.add((T) stop);
+        }
+        return result;
+    }
+
     public <T extends BaseReportItem> List<T> detectTripsAndStops(
             Device device, Date from, Date to, Class<T> reportClass) throws StorageException {
+
+        if (new TripsConfig(new AttributeUtil.StorageProvider(config, storage, permissionsService, device))
+                .getUseIgnition()) {
+            return engineTripsAndStops(device, from, to, reportClass);
+        }
 
         long threshold = config.getLong(Keys.REPORT_FAST_THRESHOLD);
         if (Duration.between(from.toInstant(), to.toInstant()).toSeconds() > threshold) {
