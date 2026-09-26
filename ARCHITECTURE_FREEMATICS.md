@@ -458,6 +458,23 @@ Caveat: a purpose/override is keyed by (deviceId, startPositionId,
 endPositionId) - anything that changes a trip's boundary positions (trip
 logic change, deleted positions) detaches it; re-key via POST + DELETE.
 
+## B10. Freematics delivery ACK (2026-09-26, `changelog-6.21.0`)
+
+The box (firmware with the delivery queue) sends `383:<boot>,384:<packet>`
+before the first `0:` of a packet. The decoder then gives every record the
+attributes `fmBoot`/`fmTs` (identity = device, boot, PID 0) and drops a record
+whose identity is already in `tc_freematics_records` (unique deviceid,
+bootid, ts) or in flight. `FreematicsAcks` sends `1#ACK=<packet>*CS` once
+every new record of the packet has left the processing chain and was stored
+(`ProcessingHandler.finishedProcessing` calls `FreematicsAcks.finished` - the
+only core change; `AcknowledgementHandler` is TCP-only). A DB failure
+(`DatabaseHandler` still calls back, position id 0) leaves the packet
+unacknowledged, so the box re-sends. The identity row is written only after
+the position is stored. A packet of only duplicates is ACKed at once.
+Old firmware (no 383/384): unchanged behaviour. Also `0x382` -> `txBacklog`
+(count; `sdBacklog` kept as boolean) and `0x385` -> `noFix`: A/B are the
+box's own last fix, stored valid=false, never replaced from the cache.
+
 ## B8. traccar-web: date/time/unit preference resolution
 
 ```js

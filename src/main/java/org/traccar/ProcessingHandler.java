@@ -59,6 +59,7 @@ import org.traccar.handler.events.ProximityEventHandler;
 import org.traccar.handler.network.AcknowledgementHandler;
 import org.traccar.helper.PositionLogger;
 import org.traccar.model.Position;
+import org.traccar.protocol.FreematicsAcks;
 import org.traccar.session.cache.CacheManager;
 
 import java.util.HashMap;
@@ -196,6 +197,9 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
     }
 
     private void finishedProcessing(ChannelHandlerContext ctx, Position position, boolean filtered) {
+        // Freematics: ACK a packet only once its records are stored (UDP has
+        // no delayed acknowledgement in Traccar) - see FreematicsAcks
+        FreematicsAcks.finished(position, filtered);
         if (!filtered) {
             postProcessHandler.handlePosition(position, ignore -> {
                 positionLogger.log(ctx, position);

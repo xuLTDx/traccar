@@ -61,6 +61,23 @@ public class FreematicsProtocolDecoderTest extends ProtocolTest {
                 "ZKUCA42T#0:28520,24:1400,382:1,10:15001600,11:260926*20"),
                 "sdBacklog", true);
 
+        // delivery protocol (2026-09-26): boot + packet number header, record identity
+        verifyPositions(decoder, text(
+                "ZKUCA42T#383:17,384:5,0:1000,10:15001600,11:260926,A:49.07,B:19.28,"
+                        + "0:2000,10:15001700,11:260926,A:49.08,B:19.29*00"));
+
+        verifyAttribute(decoder, text(
+                "ZKUCA42T#383:17,384:6,0:3000,10:15001600,11:260926,A:49.07,B:19.28*00"),
+                "fmTs", 3000L);
+
+        verifyAttribute(decoder, text(
+                "ZKUCA42T#383:17,384:7,0:4000,10:15001600,11:260926,382:12,A:49.07,B:19.28*00"),
+                "txBacklog", 12);
+
+        // no new fix: the box's own last fix, marked invalid
+        verifyPositions(decoder, false, text(
+                "ZKUCA42T#383:17,384:8,0:5000,10:15001600,11:260926,385:1,A:49.07,B:19.28*00"));
+
         // no GPS fix, time from the device clock (2026-09-25 firmware)
         verifyPositions(decoder, false, text(
                 "ZKUCA42T#0:28123,10:11172500,11:250926,24:1495,10C:1400*00"));

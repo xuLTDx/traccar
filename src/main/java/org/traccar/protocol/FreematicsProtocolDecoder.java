@@ -16,6 +16,7 @@
 package org.traccar.protocol;
 
 import io.netty.channel.Channel;
+import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.traccar.BaseProtocolDecoder;
@@ -26,6 +27,7 @@ import org.traccar.helper.Checksum;
 import org.traccar.helper.DateBuilder;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Position;
+import org.traccar.storage.Storage;
 
 import java.net.SocketAddress;
 import java.util.Date;
@@ -50,6 +52,11 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
 
     public FreematicsProtocolDecoder(Protocol protocol) {
         super(protocol);
+    }
+
+    @Inject
+    public void setStorage(Storage storage) {
+        FreematicsAcks.setStorage(storage);
     }
 
     private Object decodeEvent(
@@ -129,7 +136,12 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
     // for SD backlog replays.
     private void finalizePosition(
             Position position, DateBuilder dateBuilder, boolean hasTime, List<Position> positions) {
-        if (!position.getValid()) {
+        if (position.getBoolean("noFix")) {
+            // 2026-09-26: the box sends its own last fix with a record that has
+            // no new one (0x385) - correct even when records arrive out of order
+            position.setValid(false);
+            position.removeAttribute("noFix");
+        } else if (!position.getValid()) {
             Position last = hasTime && getCacheManager() != null
                     ? getCacheManager().getPosition(position.getDeviceId()) : null;
             if (last != null) {
@@ -163,6 +175,8 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
         Position position = null;
         DateBuilder dateBuilder = null;
         boolean hasTime = false;
+        Long bootId = null;      // 0x383, packet header (2026-09-26 delivery protocol)
+        String packetNo = null;  // 0x384, echoed back in the ACK
 
         for (String pair : sentence.split(",")) {
             String[] data = pair.split("[=:]");
@@ -173,12 +187,20 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
                 continue;
             }
             String value = data[1];
-            if (key == 0x0) {
+            if (position == null && key == 0x383) {
+                bootId = Long.parseLong(value);
+            } else if (position == null && key == 0x384) {
+                packetNo = value;
+            } else if (key == 0x0) {
                 if (position != null) {
                     finalizePosition(position, dateBuilder, hasTime, positions);
                 }
                 position = new Position(getProtocolName());
                 position.setDeviceId(deviceSession.getDeviceId());
+                if (bootId != null) {
+                    position.set("fmBoot", bootId);
+                    position.set("fmTs", Long.parseLong(value));
+                }
                 dateBuilder = new DateBuilder(new Date());
                 hasTime = false;
             } else if (position != null) {
@@ -252,7 +274,12 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
                         position.set(Position.KEY_IGNITION, start);
                     }
                     case 0x381 -> position.set("engineEventTime", Long.parseLong(value)); // unix seconds, 0 = no clock
-                    case 0x382 -> position.set("sdBacklog", !"0".equals(value)); // SD data not yet delivered
+                    case 0x382 -> {
+                        // records not yet acknowledged (count; old firmware sent 0/1)
+                        position.set("sdBacklog", !"0".equals(value));
+                        position.set("txBacklog", Integer.parseInt(value));
+                    }
+                    case 0x385 -> position.set("noFix", "1".equals(value)); // A/B = the box's last fix
                     default -> position.set(Position.PREFIX_IO + key, value);
                 }
             }
@@ -260,6 +287,13 @@ public class FreematicsProtocolDecoder extends BaseProtocolDecoder {
 
         if (position != null) {
             finalizePosition(position, dateBuilder, hasTime, positions);
+        }
+
+        if (bootId != null && packetNo != null) {
+            // drop re-sent records, ACK the packet once the rest is stored
+            long deviceId = deviceSession.getDeviceId();
+            positions.removeIf(p -> FreematicsAcks.isDuplicate(deviceId, p.getLong("fmBoot"), p.getLong("fmTs")));
+            FreematicsAcks.expect(channel, remoteAddress, packetNo, positions);
         }
 
         return positions.isEmpty() ? null : positions;
