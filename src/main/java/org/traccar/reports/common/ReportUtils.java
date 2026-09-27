@@ -457,12 +457,14 @@ public class ReportUtils {
         List<EngineRun> runs = new ArrayList<>();
         EngineRun current = null;
         boolean on = false;
+        boolean eventMode = false; // the box reports engine start/stop itself (2026-09-26 firmware)
         Date lastFixTime = null;
         Position previous = null;
         try (var stream = PositionUtil.getPositionsStream(storage, device.getId(), from, to, 0)) {
             for (var iterator = stream.iterator(); iterator.hasNext();) {
                 Position position = iterator.next();
-                if (lastFixTime != null && position.getFixTime().equals(lastFixTime)) {
+                String event = position.getString("engineEvent");
+                if (event == null && lastFixTime != null && position.getFixTime().equals(lastFixTime)) {
                     continue; // duplicate (e.g. an SD catch-up replay of a sample that went out live)
                 }
                 if (previous != null && current != null
@@ -472,13 +474,29 @@ public class ReportUtils {
                 }
                 lastFixTime = position.getFixTime();
                 previous = position;
-                Boolean state = engineState(position);
-                if (state != null) {
-                    on = state;
+                if (event != null) {
+                    // Box events decide: a trip = engine start -> engine stop (per law),
+                    // no merging; RPM 0 at a start-stop halt does not end it.
+                    eventMode = true;
+                    boolean start = "start".equals(event);
+                    if (!start && on && current != null) {
+                        addPathPoint(current, position);
+                        current.lastOn = position;
+                    }
+                    on = start;
+                    if (!start) {
+                        current = null;
+                        continue;
+                    }
+                } else if (!eventMode) {
+                    Boolean state = engineState(position);
+                    if (state != null) {
+                        on = state;
+                    }
                 }
                 if (on) {
-                    if (current != null
-                            && position.getFixTime().getTime() - current.lastOn.getFixTime().getTime() <= MERGE_GAP) {
+                    if (current != null && (eventMode
+                            || position.getFixTime().getTime() - current.lastOn.getFixTime().getTime() <= MERGE_GAP)) {
                         addPathPoint(current, position); // running, or back on after a short stop
                     } else {
                         current = new EngineRun();
