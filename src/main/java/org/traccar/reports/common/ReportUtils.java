@@ -424,6 +424,13 @@ public class ReportUtils {
         private double distance;
         private double maxSpeed;
         private Position lastPoint; // last position with coordinates, for the path
+        private boolean fromEvents;  // started by the box's engine START event
+        // The place of a trip start/end when its START/STOP record has no GPS
+        // fix (right after a standby wake the first fix can take minutes): the
+        // last fix while parked before the start, the first fix while parked
+        // after the stop - engine off = stop, so that is where the stop is.
+        private Position startPlace;
+        private Position endPlace;
     }
 
     private static Boolean engineState(Position position) {
@@ -460,12 +467,21 @@ public class ReportUtils {
         boolean eventMode = false; // the box reports engine start/stop itself (2026-09-26 firmware)
         Date lastFixTime = null;
         Position previous = null;
+        Position lastValidFix = null;   // the latest real GPS fix seen
+        EngineRun awaitingEndPlace = null;
         try (var stream = PositionUtil.getPositionsStream(storage, device.getId(), from, to, 0)) {
             for (var iterator = stream.iterator(); iterator.hasNext();) {
                 Position position = iterator.next();
                 String event = position.getString("engineEvent");
                 if (event == null && lastFixTime != null && position.getFixTime().equals(lastFixTime)) {
                     continue; // duplicate (e.g. an SD catch-up replay of a sample that went out live)
+                }
+                if (position.getValid() && hasCoordinates(position)) {
+                    if (awaitingEndPlace != null && !on && event == null) {
+                        awaitingEndPlace.endPlace = position; // first fix while parked after the STOP
+                        awaitingEndPlace = null;
+                    }
+                    lastValidFix = position;
                 }
                 if (previous != null && current != null
                         && position.getFixTime().getTime() - previous.getFixTime().getTime() > SPLIT_GAP) {
@@ -482,12 +498,16 @@ public class ReportUtils {
                     if (!start && on && current != null) {
                         addPathPoint(current, position);
                         current.lastOn = position;
+                        if (!position.getValid()) {
+                            awaitingEndPlace = current;
+                        }
                     }
                     on = start;
                     if (!start) {
                         current = null;
                         continue;
                     }
+                    awaitingEndPlace = null; // driving again: no fix came while parked
                 } else if (!eventMode) {
                     Boolean state = engineState(position);
                     if (state != null) {
@@ -501,6 +521,12 @@ public class ReportUtils {
                     } else {
                         current = new EngineRun();
                         current.start = position;
+                        if (event != null) {
+                            current.fromEvents = true;
+                            if (!position.getValid()) {
+                                current.startPlace = lastValidFix; // last fix while parked
+                            }
+                        }
                         runs.add(current);
                         addPathPoint(current, position);
                     }
@@ -509,8 +535,38 @@ public class ReportUtils {
                 }
             }
         }
-        runs.removeIf(run -> run.distance < MIN_TRIP_DISTANCE);
+        // an engine start -> stop from the box is a trip (per law) however short
+        // its GPS path; only runs derived from ignition/voltage need the filter
+        runs.removeIf(run -> !run.fromEvents && run.distance < MIN_TRIP_DISTANCE);
         return runs;
+    }
+
+    // A trip's start or end place from another position (a parked GPS fix);
+    // the times stay those of the START/STOP events.
+    private void setTripPlace(TripReportItem trip, Position place, boolean start) throws StorageException {
+        String address = place.getAddress();
+        if (address == null) {
+            address = resolveAndPersistAddress(place);
+        }
+        var suggestion = findGeofenceName(place);
+        String note = suggestion != null ? suggestion.name() : null;
+        String geofence = suggestion != null && suggestion.isGeofence() ? suggestion.name() : null;
+        String business = suggestion != null && !suggestion.isGeofence() ? suggestion.address() : null;
+        if (start) {
+            trip.setStartLat(place.getLatitude());
+            trip.setStartLon(place.getLongitude());
+            trip.setStartAddress(address);
+            trip.setStartSuggestedNote(note);
+            trip.setStartGeofenceName(geofence);
+            trip.setStartBusinessAddress(business);
+        } else {
+            trip.setEndLat(place.getLatitude());
+            trip.setEndLon(place.getLongitude());
+            trip.setEndAddress(address);
+            trip.setEndSuggestedNote(note);
+            trip.setEndGeofenceName(geofence);
+            trip.setEndBusinessAddress(business);
+        }
     }
 
     private static Date parseDate(String value) {
@@ -542,6 +598,12 @@ public class ReportUtils {
         TripReportItem previousTrip = null;
         for (EngineRun run : runs) {
             TripReportItem trip = calculateTrip(device, run.start, run.lastOn, run.maxSpeed, ignoreOdometer);
+            if (run.startPlace != null) {
+                setTripPlace(trip, run.startPlace, true);
+            }
+            if (run.endPlace != null) {
+                setTripPlace(trip, run.endPlace, false);
+            }
             trip.setDistance(run.distance);
             if (trip.getDuration() > 0) {
                 trip.setAverageSpeed(UnitsConverter.knotsFromMps(run.distance * 1000 / trip.getDuration()));
