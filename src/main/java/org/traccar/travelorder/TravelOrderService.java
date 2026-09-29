@@ -20,11 +20,11 @@ import jakarta.inject.Singleton;
 import org.traccar.helper.DistanceCalculator;
 import org.traccar.helper.model.PositionUtil;
 import org.traccar.model.AllowanceRate;
+import org.traccar.model.Company;
 import org.traccar.model.Device;
 import org.traccar.model.Driver;
 import org.traccar.model.FuelReceipt;
 import org.traccar.model.Position;
-import org.traccar.model.Server;
 import org.traccar.model.TripPurpose;
 import org.traccar.model.Vehicle;
 import org.traccar.model.VehicleAssignment;
@@ -211,7 +211,10 @@ public class TravelOrderService {
                 new Columns.All(), new Condition.Equals("id", request.getDeviceId())));
         Driver driver = request.getDriverId() > 0 ? storage.getObject(Driver.class, new Request(
                 new Columns.All(), new Condition.Equals("id", request.getDriverId()))) : null;
-        Server server = storage.getObject(Server.class, new Request(new Columns.All()));
+        long companyId = request.getCompanyId() > 0 ? request.getCompanyId()
+                : driver != null ? driver.getLong("companyId") : 0;
+        Company employer = companyId > 0 ? storage.getObject(Company.class, new Request(
+                new Columns.All(), new Condition.Equals("id", companyId))) : null;
         List<AllowanceRate> rates = rateService.getAll();
         List<String> warnings = new ArrayList<>();
 
@@ -225,11 +228,17 @@ public class TravelOrderService {
 
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, Object> company = new LinkedHashMap<>();
-        company.put("name", server.getString("companyName", ""));
-        company.put("address", server.getString("companyAddress", ""));
-        company.put("ico", server.getString("companyIco", ""));
-        company.put("phone", server.getString("companyPhone", ""));
+        company.put("id", employer != null ? employer.getId() : 0);
+        company.put("name", employer != null ? employer.getName() : "");
+        company.put("address", employer != null && employer.getAddress() != null ? employer.getAddress() : "");
+        company.put("ico", employer != null && employer.getIco() != null ? employer.getIco() : "");
+        company.put("dic", employer != null && employer.getDic() != null ? employer.getDic() : "");
+        company.put("icDph", employer != null && employer.getIcDph() != null ? employer.getIcDph() : "");
+        company.put("phone", employer != null && employer.getPhone() != null ? employer.getPhone() : "");
         result.put("company", company);
+        if (employer == null) {
+            warnings.add("Nie je vybraná firma (Reporty → Firmy, šofér alebo okno cestovného príkazu).");
+        }
 
         Map<String, Object> person = new LinkedHashMap<>();
         person.put("name", driver != null ? driver.getName() : "");

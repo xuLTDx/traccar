@@ -46,7 +46,7 @@
 
 <div class="page">
 <table class="head"><tr>
-  <td class="firm"><b>$esc.xml($r.company.name)</b><br />$esc.xml($r.company.address)#if($r.company.ico != "") · IČO $esc.xml($r.company.ico)#end#if($r.company.phone != "") · tel. $esc.xml($r.company.phone)#end</td>
+  <td class="firm"><b>$esc.xml($r.company.name)</b><br />$esc.xml($r.company.address)#if($r.company.ico != "") · IČO $esc.xml($r.company.ico)#end#if($r.company.dic && $r.company.dic != "") · DIČ $esc.xml($r.company.dic)#end#if($r.company.icDph && $r.company.icDph != "") · IČ DPH $esc.xml($r.company.icDph)#end#if($r.company.phone != "") · tel. $esc.xml($r.company.phone)#end</td>
   <td><h1>CESTOVNÝ PRÍKAZ</h1><div class="no"><span>vyúčtovanie pracovnej cesty č. </span>$esc.xml($number)</div></td>
 </tr></table>
 

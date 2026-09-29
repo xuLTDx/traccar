@@ -42,6 +42,17 @@ public class TravelOrderRequest {
         this.driverId = driverId;
     }
 
+    // 0 = the driver's company (driver attribute companyId)
+    private long companyId;
+
+    public long getCompanyId() {
+        return companyId;
+    }
+
+    public void setCompanyId(long companyId) {
+        this.companyId = companyId;
+    }
+
     private Date from;
 
     public Date getFrom() {

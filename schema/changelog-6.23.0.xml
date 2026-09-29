@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.4.xsd"
+  logicalFilePath="changelog-6.23.0">
+
+  <!-- Companies for the travel order header (instead of server attributes,
+       which only an administrator can change); the order remembers which
+       company it was issued for. -->
+  <changeSet author="author" id="changelog-6.23.0">
+    <preConditions onFail="MARK_RAN">
+      <not>
+        <tableExists tableName="tc_companies"/>
+      </not>
+    </preConditions>
+
+    <createTable tableName="tc_companies">
+      <column name="id" type="BIGINT" autoIncrement="true">
+        <constraints primaryKey="true" />
+      </column>
+      <column name="name" type="VARCHAR(128)">
+        <constraints nullable="false" />
+      </column>
+      <column name="address" type="VARCHAR(256)" />
+      <column name="ico" type="VARCHAR(16)" />
+      <column name="dic" type="VARCHAR(16)" />
+      <column name="icdph" type="VARCHAR(16)" />
+      <column name="phone" type="VARCHAR(32)" />
+      <column name="statutory" type="VARCHAR(256)" />
+    </createTable>
+
+    <addColumn tableName="tc_travel_orders">
+      <column name="companyid" type="BIGINT" defaultValueNumeric="0">
+        <constraints nullable="false" />
+      </column>
+    </addColumn>
+
+  </changeSet>
+
+</databaseChangeLog>

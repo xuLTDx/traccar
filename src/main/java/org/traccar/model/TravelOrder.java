@@ -66,6 +66,16 @@ public class TravelOrder extends BaseModel {
         this.driverId = driverId;
     }
 
+    private long companyId;
+
+    public long getCompanyId() {
+        return companyId;
+    }
+
+    public void setCompanyId(long companyId) {
+        this.companyId = companyId;
+    }
+
     private long deviceId;
 
     public long getDeviceId() {

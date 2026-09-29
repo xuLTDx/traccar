@@ -144,6 +144,7 @@ public class TravelOrderResource extends BaseResource {
             order.setYear(year);
             order.setSequence(sequence);
             order.setDriverId(request.getDriverId());
+            order.setCompanyId(((Number) ((Map<?, ?>) result.get("company")).get("id")).longValue());
             order.setDeviceId(request.getDeviceId());
             order.setFromTime(request.getFrom());
             order.setToTime(request.getTo());
