@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.4.xsd"
+  logicalFilePath="changelog-6.22.0">
+
+  <!-- Vehicle registry for the travel order (cestovný príkaz): the car's
+       data from its technical certificate, and which box was in which car
+       when (a trip belongs to the vehicle assigned at its start). -->
+  <changeSet author="author" id="changelog-6.22.0">
+    <preConditions onFail="MARK_RAN">
+      <not>
+        <tableExists tableName="tc_vehicles"/>
+      </not>
+    </preConditions>
+
+    <createTable tableName="tc_vehicles">
+      <column name="id" type="BIGINT" autoIncrement="true">
+        <constraints primaryKey="true" />
+      </column>
+      <column name="plate" type="VARCHAR(32)">
+        <constraints nullable="false" />
+      </column>
+      <column name="name" type="VARCHAR(128)" />
+      <column name="vin" type="VARCHAR(32)" />
+      <column name="category" type="VARCHAR(16)" />
+      <column name="ownership" type="VARCHAR(16)" defaultValue="company">
+        <constraints nullable="false" />
+      </column>
+      <column name="holder" type="VARCHAR(128)" />
+      <column name="fuel" type="VARCHAR(32)" />
+      <column name="tankcapacity" type="DOUBLE" defaultValueNumeric="0">
+        <constraints nullable="false" />
+      </column>
+      <column name="consumptiontype" type="VARCHAR(16)" />
+      <column name="consumptioncombined" type="DOUBLE" defaultValueNumeric="0">
+        <constraints nullable="false" />
+      </column>
+      <column name="consumptionurban" type="DOUBLE" defaultValueNumeric="0">
+        <constraints nullable="false" />
+      </column>
+      <column name="consumptionextraurban" type="DOUBLE" defaultValueNumeric="0">
+        <constraints nullable="false" />
+      </column>
+      <column name="consumptionsource" type="VARCHAR(256)" />
+      <column name="note" type="VARCHAR(512)" />
+    </createTable>
+
+    <createTable tableName="tc_vehicle_assignments">
+      <column name="id" type="BIGINT" autoIncrement="true">
+        <constraints primaryKey="true" />
+      </column>
+      <column name="vehicleid" type="BIGINT">
+        <constraints nullable="false" />
+      </column>
+      <column name="deviceid" type="INT">
+        <constraints nullable="false" />
+      </column>
+      <column name="fromtime" type="TIMESTAMP">
+        <constraints nullable="false" />
+      </column>
+      <column name="totime" type="TIMESTAMP" />
+    </createTable>
+
+  </changeSet>
+
+</databaseChangeLog>
