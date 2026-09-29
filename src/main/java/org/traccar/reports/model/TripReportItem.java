@@ -206,4 +206,17 @@ public class TripReportItem extends BaseReportItem {
     public void setEndSuggestedNote(String endSuggestedNote) {
         this.endSuggestedNote = endSuggestedNote;
     }
+
+    // Device with the CAN odometer (attribute odometerSource = "can"): the
+    // trip's START or STOP record has no real odometer reading, so its
+    // odometer and distance are left empty - never estimated from GPS.
+    private boolean odometerMissing;
+
+    public boolean getOdometerMissing() {
+        return odometerMissing;
+    }
+
+    public void setOdometerMissing(boolean odometerMissing) {
+        this.odometerMissing = odometerMissing;
+    }
 }

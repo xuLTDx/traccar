@@ -586,6 +586,10 @@ public class ReportUtils {
         Date anchorTime = device.hasAttribute("odometerAnchorReal")
                 ? parseDate(device.getString("odometerAnchorTime")) : null;
         double factor = device.getDouble("odometerFactor", 1.0);
+        // Box with the CAN module reading the car's odometer (2026-09-29): a
+        // trip's odometer and km come only from the real readings in its
+        // START and STOP records; GPS distance never turns into km.
+        boolean canOdometer = "can".equals(device.getString("odometerSource"));
 
         // computed from the anchor (or a week back) so the chain and the
         // "previous trip" are the same whatever range is requested
@@ -627,6 +631,20 @@ public class ReportUtils {
                 odometer += run.distance * factor;
                 trip.setEndOdometer(odometer);
             }
+            if (canOdometer) {
+                if (realStart != 0 && realEnd != 0) {
+                    trip.setStartOdometer(realStart);
+                    trip.setEndOdometer(realEnd);
+                    trip.setDistance(realEnd - realStart);
+                } else {
+                    trip.setStartOdometer(0);
+                    trip.setEndOdometer(0);
+                    trip.setDistance(0);
+                    trip.setOdometerMissing(true);
+                }
+                trip.setAverageSpeed(trip.getDuration() > 0
+                        ? UnitsConverter.knotsFromMps(trip.getDistance() * 1000 / trip.getDuration()) : 0);
+            }
             trips.add(trip);
             previousTrip = trip;
         }
@@ -658,7 +676,8 @@ public class ReportUtils {
             stop.setLatitude(trip.getEndLat());
             stop.setLongitude(trip.getEndLon());
             stop.setAddress(trip.getEndAddress());
-            if (trip.getEndOdometer() != 0) {
+            if (trip.getEndOdometer() != 0 || canOdometer) {
+                // CAN box: only the real reading, never the GPS-calibrated one
                 stop.setStartOdometer(trip.getEndOdometer());
                 stop.setEndOdometer(trip.getEndOdometer());
             }
