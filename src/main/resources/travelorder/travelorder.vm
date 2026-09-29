@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="sk">
+<head>
+<meta charset="UTF-8" />
+<title>Cestovný príkaz $esc.xml($number)</title>
+<style>
+  @page { size: A4; margin: 12mm 14mm 11mm 14mm;
+    @bottom-left { content: "$esc.xml($number)"; font-family: 'Noto Sans'; font-size: 7pt; color: rgb(91,102,115); }
+    @bottom-right { content: "strana " counter(page) " / " counter(pages); font-family: 'Noto Sans'; font-size: 7pt; color: rgb(91,102,115); } }
+  body { font-family: 'Noto Sans'; font-size: 9pt; line-height: 1.3; color: rgb(28,37,48); margin: 0; }
+  .page { page-break-after: always; }
+  .last { page-break-after: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  .head td { vertical-align: bottom; padding: 0 0 5pt 0; border-bottom: 2.2pt solid rgb(31,78,121); }
+  .firm { font-size: 8pt; color: rgb(91,102,115); }
+  .firm b { font-size: 10.5pt; color: rgb(28,37,48); }
+  h1 { margin: 0; font-size: 18pt; font-weight: 700; color: rgb(31,78,121); text-align: right; }
+  .no { text-align: right; font-size: 10.5pt; font-weight: 700; }
+  .no span { font-weight: 400; color: rgb(91,102,115); font-size: 8pt; }
+  h2 { margin: 8pt 0 3pt 0; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8pt; color: rgb(31,78,121); }
+  .box td { border: 0.8pt solid rgb(201,209,218); padding: 3pt 6pt 4pt 6pt; vertical-align: top; }
+  .lbl { display: block; font-size: 6.5pt; color: rgb(91,102,115); text-transform: uppercase; letter-spacing: 0.4pt; }
+  .val { font-weight: 600; }
+  .yn td { border: 0.8pt solid rgb(201,209,218); padding: 2.5pt 6pt; font-size: 8.5pt; }
+  .yn td.v { width: 28pt; text-align: center; font-weight: 600; }
+  .money th, .money td { padding: 3pt 6pt; border-bottom: 0.8pt solid rgb(201,209,218); text-align: left; vertical-align: top; }
+  .money th, .list th { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.4pt; color: rgb(91,102,115); font-weight: 600; background: rgb(238,242,246); }
+  .n, .money .n, .list .n { text-align: right; white-space: nowrap; }
+  .sub { display: block; font-size: 7pt; color: rgb(91,102,115); }
+  .total td { border-top: 1.6pt solid rgb(31,78,121); border-bottom: 0; font-size: 12pt; font-weight: 700; padding-top: 5pt; }
+  .total td.n { color: rgb(31,78,121); }
+  .notes { border: 0.8pt solid rgb(201,209,218); padding: 4pt 6pt; min-height: 26pt; font-size: 8.5pt; }
+  .warn { border: 0.8pt solid rgb(214,160,60); background: rgb(253,246,232); padding: 4pt 6pt; font-size: 8pt; margin-top: 6pt; }
+  .sign td { width: 33%; padding: 22pt 8pt 0 8pt; }
+  .sign div { border-top: 0.8pt solid rgb(28,37,48); padding-top: 2pt; font-size: 7.5pt; color: rgb(91,102,115); text-align: center; }
+  .small td { border-bottom-width: 1.2pt; }
+  .small .t { font-size: 12pt; font-weight: 700; color: rgb(31,78,121); }
+  .list { font-size: 8pt; }
+  .list th, .list td { border-bottom: 0.8pt solid rgb(201,209,218); padding: 2.5pt 4pt; text-align: left; vertical-align: top; }
+  .list tr.sum td { border-top: 1.4pt solid rgb(31,78,121); font-weight: 700; }
+  .private td { color: rgb(120,128,138); }
+  .hint { font-size: 7.5pt; color: rgb(91,102,115); margin: 4pt 0 0 0; }
+</style>
+</head>
+<body>
+
+<div class="page">
+<table class="head"><tr>
+  <td class="firm"><b>$esc.xml($r.company.name)</b><br />$esc.xml($r.company.address)#if($r.company.ico != "") · IČO $esc.xml($r.company.ico)#end#if($r.company.phone != "") · tel. $esc.xml($r.company.phone)#end</td>
+  <td><h1>CESTOVNÝ PRÍKAZ</h1><div class="no"><span>vyúčtovanie pracovnej cesty č. </span>$esc.xml($number)</div></td>
+</tr></table>
+
+<h2>Vyslaný</h2>
+<table class="box"><tr>
+  <td style="width:30%"><span class="lbl">Meno a priezvisko</span><span class="val">$esc.xml($r.driver.name)</span></td>
+  <td style="width:30%"><span class="lbl">Funkcia</span><span class="val">$esc.xml($r.driver.role)</span></td>
+  <td><span class="lbl">Bydlisko</span><span class="val">$esc.xml($r.driver.address)</span></td>
+</tr></table>
+
+<h2>Pracovná cesta</h2>
+<table class="box">
+  <tr><td colspan="2"><span class="lbl">Miesto konania</span><span class="val">$esc.xml($r.order.places)</span></td></tr>
+  <tr>
+    <td style="width:50%"><span class="lbl">Začiatok – dátum, čas, miesto</span><span class="val">$esc.xml($!r.start) · $esc.xml($!r.startPlace)</span></td>
+    <td><span class="lbl">Koniec – dátum, čas, miesto</span><span class="val">$esc.xml($!r.end) · $esc.xml($!r.endPlace)</span></td>
+  </tr>
+  <tr>
+    <td><span class="lbl">Účel</span><span class="val">$esc.xml($r.order.purpose)</span></td>
+    <td><span class="lbl">Krajiny (podľa GPS)</span><span class="val">$esc.xml($r.countries)</span></td>
+  </tr>
+</table>
+
+<h2>Doprava</h2>
+<table class="box">
+  <tr>
+    <td colspan="2"><span class="lbl">Vozidlo</span><span class="val">$esc.xml($!r.vehicle.name) · $esc.xml($!r.vehicle.plate)</span></td>
+    <td><span class="lbl">Druh</span><span class="val">#if($r.vehicle.private)súkromné vozidlo#{else}firemné vozidlo#end</span></td>
+    <td><span class="lbl">Palivo · spotreba</span><span class="val">$esc.xml($!r.vehicle.fuel)#if($r.vehicle.consumption && $r.vehicle.consumption > 0) · $fmt.num($r.vehicle.consumption, 1) l/100 km#end</span></td>
+  </tr>
+  <tr>
+    <td style="width:22%"><span class="lbl">Tachometer začiatok</span><span class="val">$esc.xml($r.km.odoStart) km</span></td>
+    <td style="width:22%"><span class="lbl">Tachometer koniec</span><span class="val">$esc.xml($r.km.odoEnd) km</span></td>
+    <td style="width:28%"><span class="lbl">Najazdené služobne (tachometer)</span><span class="val">$r.km.total km</span></td>
+    <td><span class="lbl">Sadzba základnej náhrady</span><span class="val">#if($r.km.private)$fmt.num($r.km.rate, 3) €/km#{else}—#end</span></td>
+  </tr>
+</table>
+
+<h2>Hosťujúca organizácia poskytne</h2>
+<table class="yn">
+  <tr><td>Stravovanie v plnom rozsahu</td><td class="v">$fmt.yn($r.order.mealsFull)</td><td>Vreckové</td><td class="v">$fmt.yn($r.order.pocketMoney)</td></tr>
+  <tr><td>Stravovanie čiastočne</td><td class="v">$fmt.yn($r.order.mealsPartial)</td><td>Poistenie liečebných nákladov</td><td class="v">$fmt.yn($r.order.insurance)</td></tr>
+  <tr><td>Ubytovanie#if($r.order.breakfastIncluded) (s raňajkami)#end</td><td class="v">$fmt.yn($r.order.accommodation)</td><td>Cestovné</td><td class="v">$fmt.yn($r.order.travelCosts)</td></tr>
+  <tr><td colspan="2"></td><td>Potrebné vedľajšie výdavky</td><td class="v">$fmt.yn($r.order.otherCosts)</td></tr>
+</table>
+
+<h2>Vyúčtovanie</h2>
+<table class="money">
+  <tr><th>Položka</th><th>Základ</th><th class="n">Suma</th></tr>
+  <tr><td>Stravné – tuzemsko<span class="sub">§ 5, § 16 ods. 1</span></td><td>počet dní: $r.days.size(), rozpis na strane 2</td><td class="n">$fmt.eur($r.totals.domestic)</td></tr>
+  <tr><td>Stravné – zahraničie<span class="sub">§ 13</span></td><td>#if($r.totals.foreignOther != "")+ $esc.xml($r.totals.foreignOther) (v cudzej mene)#{else}rozpis na strane 2#end</td><td class="n">$fmt.eur($r.totals.foreignEur)</td></tr>
+  <tr><td>Základná náhrada za km<span class="sub">§ 7 ods. 2#if($r.km.rateSource != "") · $esc.xml($r.km.rateSource)#end</span></td><td>#if($r.km.private)$r.km.total km#{else}firemné vozidlo#end</td><td class="n">$fmt.eur($r.totals.km)</td></tr>
+  <tr><td>Náhrada za spotrebované PHM<span class="sub">§ 7 ods. 4 – 6</span></td><td>#if($r.km.private && $r.fuel.price)$fmt.num($r.fuel.litres, 2) l × $fmt.num($r.fuel.price, 3) €/l#elseif($r.km.private)$fmt.num($r.fuel.litres, 2) l – bez ceny#{else}firemné vozidlo#end</td><td class="n">$fmt.eur($r.totals.fuel)</td></tr>
+  <tr><td>Preddavok</td><td></td><td class="n">− $fmt.eur($r.totals.advance)</td></tr>
+  <tr class="total"><td colspan="2">Suma k výplate</td><td class="n">$fmt.eur($r.totals.total)</td></tr>
+</table>
+
+<h2>Iné záznamy</h2>
+<div class="notes">$esc.xml($r.order.notes)</div>
+#if($r.warnings.size() > 0)
+<div class="warn"><b>Upozornenia:</b>#foreach($w in $r.warnings)<br />· $esc.xml($w)#end</div>
+#end
+
+<table class="sign"><tr>
+  <td><div>dátum vyúčtovania</div></td><td><div>podpis vyslaného</div></td><td><div>schválil (štatutárny orgán)</div></td>
+</tr></table>
+</div>
+
+<div class="page">
+<table class="head small"><tr><td class="t">Vyúčtovanie po dňoch</td><td class="no">$esc.xml($number)</td></tr></table>
+<h2>Stravné (§ 5 ods. 1, § 13 ods. 4, 5, § 16)</h2>
+<table class="list">
+  <tr><th>Deň</th><th>Krajiny a hodiny</th><th class="n">SR h</th><th>Pásmo SR</th><th class="n">Tuzemské</th><th class="n">Mimo SR h</th><th>Zahraničné</th><th class="n">Suma</th></tr>
+#foreach($d in $r.days)
+  <tr><td>$d.day</td><td>$esc.xml($d.countries)</td><td class="n">$fmt.num($d.hoursHome, 1)</td><td>$d.domesticBand</td><td class="n">$fmt.eur($d.domestic)</td><td class="n">$fmt.num($d.hoursAbroad, 1)</td>
+    <td>#if($d.foreignPercent > 0)$esc.xml($d.foreignCountry) $d.foreignPercent %#if($d.foreignRate) z $fmt.num($d.foreignRate, 2) $d.foreignCurrency#end#if($d.foreignNote)<span class="sub">$esc.xml($d.foreignNote)</span>#end#{else}—#end</td>
+    <td class="n">#if($d.foreignPercent > 0 && $d.foreign)$fmt.money($d.foreign) $d.foreignCurrency#{else}—#end</td></tr>
+#end
+  <tr class="sum"><td colspan="4">Spolu</td><td class="n">$fmt.eur($r.totals.domestic)</td><td></td><td></td><td class="n">$fmt.eur($r.totals.foreignEur)#if($r.totals.foreignOther != "")<br />$esc.xml($r.totals.foreignOther)#end</td></tr>
+</table>
+<p class="hint">Čas cesty = od odchodu z domova po návrat domov, podľa GPS. Tuzemské stravné podľa hodín na území SR v daný deň, zahraničné podľa hodín mimo SR v sadzbe krajiny s najviac hodinami v daný deň; prechod hranice podľa GPS.</p>
+
+<h2>Náhrady za vozidlo (§ 7)</h2>
+<table class="list">
+  <tr><th style="width:32%">Položka</th><th>Hodnota</th></tr>
+  <tr><td>Vozidlo</td><td>$esc.xml($!r.vehicle.name) $esc.xml($!r.vehicle.plate) – #if($r.km.private)súkromné (§ 7 ods. 1)#{else}firemné, náhrady sa neposkytujú#end</td></tr>
+  <tr><td>Najazdené služobne podľa tachometra</td><td>$r.km.total km</td></tr>
+#if($r.km.private)
+  <tr><td>Základná náhrada</td><td>$fmt.num($r.km.rate, 3) €/km ($esc.xml($r.km.rateSource)) = $fmt.eur($r.totals.km)</td></tr>
+  <tr><td>Spotreba</td><td>$fmt.num($r.fuel.consumption, 1) l/100 km + 10 % = $fmt.num($r.fuel.consumptionUsed, 2) l/100 km · zdroj: $esc.xml($!r.vehicle.consumptionSource)</td></tr>
+  <tr><td>Cena PHM</td><td>#if($r.fuel.price)$fmt.num($r.fuel.price, 3) €/l – priemer z $r.fuel.receipts dokladov o kúpe (§ 7 ods. 5)#{else}bez dokladu o kúpe#end</td></tr>
+  <tr><td>Náhrada za PHM</td><td>$fmt.num($r.fuel.litres, 2) l = $fmt.eur($r.totals.fuel)</td></tr>
+#end
+</table>
+</div>
+
+<div class="page last">
+<table class="head small"><tr><td class="t">Kniha jázd <span style="font-size:8pt;font-weight:400;color:rgb(91,102,115)">· $esc.xml($!r.vehicle.name) $esc.xml($!r.vehicle.plate) · vodič $esc.xml($r.driver.name)</span></td><td class="no">$esc.xml($number)</td></tr></table>
+<table class="list" style="margin-top:6pt">
+  <tr><th>#</th><th>Začiatok</th><th>Koniec</th><th>Odkiaľ</th><th>Kam</th><th>Účel</th><th class="n">Tach. zač.</th><th class="n">Tach. kon.</th><th class="n">km</th></tr>
+#foreach($t in $r.trips)
+  <tr#if(!$t.business) class="private"#end><td>$foreach.count</td><td>$t.start</td><td>$t.end</td><td>$esc.xml($t.from)</td><td>$esc.xml($t.to)</td><td>#if($t.business)služobná#{else}súkromná#end#if($t.note != "")<span class="sub">$esc.xml($t.note)</span>#end</td><td class="n">$t.odoStart</td><td class="n">$t.odoEnd</td><td class="n">$t.km</td></tr>
+#end
+  <tr class="sum"><td colspan="8">Spolu služobne</td><td class="n">$r.km.total</td></tr>
+</table>
+<p class="hint">Km iba zo stavu tachometra vozidla. Jazda bez stavu tachometra má km prázdne a nezapočítava sa.</p>
+</div>
+
+</body>
+</html>
