@@ -12,6 +12,7 @@ DEPLOY_DIR="$(dirname "$(pwd)")"   # .. from packaging/ is deploy/
 VERSION="${1:-1.0.0}"
 PKGROOT="$(mktemp -d)"
 trap 'rm -rf "$PKGROOT"' EXIT
+chmod 755 "$PKGROOT"   # mktemp -d is 700; the package root maps to /
 
 # --- filesystem layout -------------------------------------------------
 install -d "$PKGROOT/DEBIAN"
@@ -33,7 +34,8 @@ Version: $VERSION
 Section: net
 Priority: optional
 Architecture: all
-Depends: postgresql, python3 (>= 3.7)
+Depends: postgresql, python3 (>= 3.7), libreoffice-calc, curl, openssl
+Recommends: iptables-persistent
 Maintainer: (self-hosted, no upstream)
 Description: Bootstrap scripts for this deployment's Traccar + PostgreSQL setup
  Does NOT package Traccar itself (that's this fork's own Gradle build
@@ -50,6 +52,15 @@ Description: Bootstrap scripts for this deployment's Traccar + PostgreSQL setup
  creates this deployment's actual user accounts, device, business
  addresses, and odometer calibration anchor - real per-deployment data
  that only makes sense entered by a human once, not on every install.
+ .
+ libreoffice-calc: report export to ODS/PDF (DocumentConverter). The
+ travel order PDF needs no system package (openhtmltopdf + Noto Sans are
+ in Traccar's own lib/ and jar), only outbound HTTPS to static.slov-lex.sk
+ (allowance rates, weekly) and api.statistics.sk (company lookup).
+ .
+ Firewall is NOT changed by this package (a wrong rule can lock the server
+ out): open UDP 6000 (freematics) and TCP 6003 (freematicshttp) yourself,
+ postinst prints the commands.
 EOF
 
 # --- maintainer scripts ---------------------------------------------------
@@ -75,6 +86,11 @@ echo "Once Traccar is confirmed up (systemctl status traccar), run this ONCE"
 echo "to create your users/device/business-addresses/odometer-anchor:"
 echo "  python3 /opt/traccar-setup/03_bootstrap_traccar_data.py"
 echo "See /opt/traccar-setup/README.md for what each account is for."
+echo ""
+echo "Firewall (not changed by this package) - device ports to open:"
+echo "  iptables -A INPUT -p udp --dport 6000 -j ACCEPT   # freematics"
+echo "  iptables -A INPUT -p tcp --dport 6003 -j ACCEPT   # freematicshttp (OVMS)"
+echo "  netfilter-persistent save"
 exit 0
 EOF
 chmod 755 "$PKGROOT/DEBIAN/postinst"

@@ -95,10 +95,20 @@ bash build_deb.sh 1.0.0
 sudo dpkg -i traccar-server-setup_1.0.0_all.deb
 ```
 
-**As of 2026-09-21 this package definition has NOT been built or installed
-on the real server - it's structure/logic-verified only (no `dpkg-deb`
-access from the environment that wrote it).** Build and test-install it for
-real before trusting it blindly on a future fresh server.
+**2026-09-29: version 1.1.0 BUILT on the real server (dpkg-deb, contents
+and control checked) but NOT installed** - installing it on the live server
+would rewrite `traccar.xml` and restart Traccar. Test-install it on a fresh
+server before relying on it.
+
+1.1.0 brings `traccar.xml` in line with the live server
+(`report.trip.newLogic=false`, `freematicshttp.port=6003`) and adds
+`Depends: libreoffice-calc, curl, openssl` (report export to ODS/PDF; the
+scripts' own tools), `Recommends: iptables-persistent`. The travel order
+(cestovný príkaz) PDF needs no system package - openhtmltopdf and the
+Noto Sans font are in Traccar's own `lib/` and jar - only outbound HTTPS to
+`static.slov-lex.sk` (allowance rates) and `api.statistics.sk` (company
+lookup). The firewall is not touched by the package; postinst prints the
+two device ports to open (UDP 6000, TCP 6003).
 
 ## Why this exists
 

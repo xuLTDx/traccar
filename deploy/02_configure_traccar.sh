@@ -53,6 +53,9 @@ cat > "$CONF" <<XML
 
     <entry key='geocoder.type'>nominatim</entry>
     <entry key='report.trip.useIgnition'>true</entry>
+    <!-- the old MotionProcessor honours useIgnition (engine off ends a trip);
+         the new geometric one ignores it (2026-09-25) -->
+    <entry key='report.trip.newLogic'>false</entry>
 
     <!-- Default (0.01 knots ~ 0.02 km/h) is below normal GPS noise while
          parked - confirmed live 2026-09-21 this device showed 0.05-0.16
@@ -72,9 +75,11 @@ cat > "$CONF" <<XML
          the future.
          Port map: 6000 = Freematics protocol, 6001 = freematics-ota pull
          server (separate process, not Traccar), 6002 = osmand protocol
-         (Traccar Android app). -->
+         (Traccar Android app), 6003 = Freematics packet over HTTP POST
+         (freematicshttp, OVMS scripts; 2026-09-29). -->
     <entry key='freematics.port'>6000</entry>
     <entry key='osmand.port'>6002</entry>
+    <entry key='freematicshttp.port'>6003</entry>
 </properties>
 XML
 
