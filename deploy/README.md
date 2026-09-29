@@ -95,10 +95,11 @@ bash build_deb.sh 1.0.0
 sudo dpkg -i traccar-server-setup_1.0.0_all.deb
 ```
 
-**2026-09-29: version 1.1.0 BUILT on the real server (dpkg-deb, contents
-and control checked) but NOT installed** - installing it on the live server
-would rewrite `traccar.xml` and restart Traccar. Test-install it on a fresh
-server before relying on it.
+**State checked on the server 2026-09-29 (`dpkg -l`):** version 1.0.0 IS
+installed (`/opt/traccar-setup`, files dated 2026-09-21 15:19 - older than
+the scripts in this repo). Version 1.1.0 was built on the server
+(`dpkg-deb`, contents and control checked) but NOT installed - installing it
+on the live server would rewrite `traccar.xml` and restart Traccar.
 
 1.1.0 brings `traccar.xml` in line with the live server
 (`report.trip.newLogic=false`, `freematicshttp.port=6003`) and adds
