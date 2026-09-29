@@ -292,9 +292,13 @@ public class TravelOrderService {
                     missing++;
                 }
             } else {
-                long km = Math.round(Math.ceil(item.getDistance() / 1000 - 1e-9));
-                row.put("odoStart", String.valueOf(Math.round(item.getStartOdometer() / 1000)));
-                row.put("odoEnd", String.valueOf(Math.round(item.getEndOdometer() / 1000)));
+                // km = difference of the printed odometer readings (whole km), so
+                // the rows always add up to end - start of the whole period
+                long start = Math.round(item.getStartOdometer() / 1000);
+                long end = Math.round(item.getEndOdometer() / 1000);
+                long km = Math.max(0, end - start);
+                row.put("odoStart", String.valueOf(start));
+                row.put("odoEnd", String.valueOf(end));
                 row.put("km", String.valueOf(km));
                 if (trip.business()) {
                     kmTotal += km;
