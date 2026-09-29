@@ -16,6 +16,8 @@
 package org.traccar.protocol;
 
 import io.netty.channel.Channel;
+import io.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.traccar.NetworkMessage;
@@ -107,11 +109,29 @@ public final class FreematicsAcks {
         }
     }
 
+    // HTTP variant (FreematicsHttpProtocol): the ACK is the response to the POST
+    private static boolean isHttp(Channel channel) {
+        return channel != null && channel.pipeline().get(HttpResponseEncoder.class) != null;
+    }
+
     static void send(Channel channel, SocketAddress remoteAddress, String number) {
         if (channel != null) {
             String message = "1#ACK=" + number;
             message += '*' + Checksum.sum(message);
-            channel.writeAndFlush(new NetworkMessage(message, remoteAddress));
+            if (isHttp(channel)) {
+                FreematicsHttpProtocolDecoder.sendHttp(channel, HttpResponseStatus.OK, message);
+            } else {
+                channel.writeAndFlush(new NetworkMessage(message, remoteAddress));
+            }
+        }
+    }
+
+    // a stored-failure packet gets no ACK (the device sends it again); over UDP
+    // that is silence, over HTTP the request still needs an answer
+    private static void sendNotStored(Channel channel, String number) {
+        if (isHttp(channel)) {
+            FreematicsHttpProtocolDecoder.sendHttp(
+                    channel, HttpResponseStatus.SERVICE_UNAVAILABLE, "not stored: " + number);
         }
     }
 
@@ -166,15 +186,19 @@ public final class FreematicsAcks {
             }
         }
         IN_FLIGHT.remove(key(deviceId, bootId, ts));
-        boolean ack;
+        boolean done;
+        boolean failed;
         synchronized (PENDING) {
             if (!stored && !filtered) {
                 packet.failed = true;  // the database did not take it: no ACK, the box re-sends
             }
-            ack = --packet.left == 0 && !packet.failed;
+            done = --packet.left == 0;
+            failed = packet.failed;
         }
-        if (ack) {
+        if (done && !failed) {
             send(packet.channel, packet.remoteAddress, packet.number);
+        } else if (done) {
+            sendNotStored(packet.channel, packet.number);
         }
     }
 
