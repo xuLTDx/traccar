@@ -417,6 +417,7 @@ public class ReportUtils {
     private static final double MIN_TRIP_DISTANCE = 200;  // meters
     private static final double CONTINUITY_RADIUS = 500;  // meters
     private static final long CHAIN_LOOKBACK = 7L * 24 * 3600 * 1000; // context without an anchor
+    private static final long ODO_LOOKAHEAD = 30L * 24 * 3600 * 1000; // next real odometer reading
 
     private static final class EngineRun {
         private Position start;
@@ -569,6 +570,84 @@ public class ReportUtils {
         }
     }
 
+    // odometerSource = "odo": trip odometer and km from the car's real readings
+    // (runs.get(i) belongs to trips.get(i)).
+    //  1. A trip's own START/STOP reading when it has one.
+    //  2. Between trips the car stands, so a missing end = the next trip's
+    //     start reading and a missing start = the previous trip's end.
+    //  3. What is still missing lies between two real readings R1 and R2: the
+    //     km R2 - R1 are split over those trips by their GPS paths (by
+    //     duration if they have no GPS path) - marked odometerComputed.
+    //  4. No R1 before or no R2 yet after: odometerMissing, left empty.
+    private static void applyCarOdometer(List<EngineRun> runs, List<TripReportItem> trips) {
+        int n = trips.size();
+        double[] start = new double[n];
+        double[] end = new double[n];
+        boolean[] computed = new boolean[n];
+        for (int i = 0; i < n; i++) {
+            start[i] = runs.get(i).start.getDouble(Position.KEY_ODOMETER);
+            end[i] = runs.get(i).lastOn.getDouble(Position.KEY_ODOMETER);
+        }
+        for (int i = 0; i + 1 < n; i++) {
+            if (end[i] == 0 && start[i + 1] != 0) {
+                end[i] = start[i + 1];
+                computed[i] = true;
+            } else if (start[i + 1] == 0 && end[i] != 0) {
+                start[i + 1] = end[i];
+                computed[i + 1] = true;
+            }
+        }
+        int i = 0;
+        while (i < n) {
+            if (start[i] != 0 && end[i] != 0) {
+                i++;
+                continue;
+            }
+            // trips i..k miss a reading; R1 = start[i], R2 = end[k]
+            int k = i;
+            while (k < n && end[k] == 0) {
+                k++;
+            }
+            boolean closed = start[i] != 0 && k < n && end[k] >= start[i];
+            if (closed) {
+                double weightSum = 0;
+                double durationSum = 0;
+                for (int j = i; j <= k; j++) {
+                    weightSum += runs.get(j).distance;
+                    durationSum += trips.get(j).getDuration();
+                }
+                double total = end[k] - start[i];
+                double odometer = start[i];
+                for (int j = i; j <= k; j++) {
+                    double share = weightSum > 0 ? runs.get(j).distance / weightSum
+                            : durationSum > 0 ? (double) trips.get(j).getDuration() / durationSum
+                            : 1.0 / (k - i + 1);
+                    start[j] = odometer;
+                    odometer = j == k ? end[k] : odometer + total * share;
+                    end[j] = odometer;
+                    computed[j] = true;
+                }
+            }
+            i = Math.min(k, n - 1) + 1;
+        }
+        for (int j = 0; j < n; j++) {
+            TripReportItem trip = trips.get(j);
+            if (start[j] != 0 && end[j] != 0 && end[j] >= start[j]) {
+                trip.setStartOdometer(start[j]);
+                trip.setEndOdometer(end[j]);
+                trip.setDistance(end[j] - start[j]);
+                trip.setOdometerComputed(computed[j]);
+            } else {
+                trip.setStartOdometer(0);
+                trip.setEndOdometer(0);
+                trip.setDistance(0);
+                trip.setOdometerMissing(true);
+            }
+            trip.setAverageSpeed(trip.getDuration() > 0
+                    ? UnitsConverter.knotsFromMps(trip.getDistance() * 1000 / trip.getDuration()) : 0);
+        }
+    }
+
     private static Date parseDate(String value) {
         try {
             return value != null ? Date.from(java.time.Instant.parse(value)) : null;
@@ -588,14 +667,21 @@ public class ReportUtils {
         double factor = device.getDouble("odometerFactor", 1.0);
         // Box with the CAN module reading the car's odometer (2026-09-29): a
         // trip's odometer and km come only from the real readings in its
-        // START and STOP records; GPS distance never turns into km.
-        boolean canOdometer = "can".equals(device.getString("odometerSource"));
+        // START and STOP records (see applyCarOdometer); GPS never adds km.
+        boolean canOdometer = "odo".equals(device.getString("odometerSource"));
 
         // computed from the anchor (or a week back) so the chain and the
         // "previous trip" are the same whatever range is requested
         Date chainFrom = anchorTime != null && anchorTime.before(from)
                 ? anchorTime : new Date(from.getTime() - CHAIN_LOOKBACK);
-        List<EngineRun> runs = detectEngineRuns(device, chainFrom, to);
+        // with the car's odometer, look past the range (up to 30 days, not
+        // past now) for the next real reading that closes a gap in readings
+        Date runsTo = to;
+        if (canOdometer) {
+            long ahead = Math.min(System.currentTimeMillis(), to.getTime() + ODO_LOOKAHEAD);
+            runsTo = new Date(Math.max(ahead, to.getTime()));
+        }
+        List<EngineRun> runs = detectEngineRuns(device, chainFrom, runsTo);
 
         List<TripReportItem> trips = new ArrayList<>();
         double odometer = anchorTime != null ? device.getDouble("odometerAnchorReal") : 0;
@@ -631,22 +717,11 @@ public class ReportUtils {
                 odometer += run.distance * factor;
                 trip.setEndOdometer(odometer);
             }
-            if (canOdometer) {
-                if (realStart != 0 && realEnd != 0) {
-                    trip.setStartOdometer(realStart);
-                    trip.setEndOdometer(realEnd);
-                    trip.setDistance(realEnd - realStart);
-                } else {
-                    trip.setStartOdometer(0);
-                    trip.setEndOdometer(0);
-                    trip.setDistance(0);
-                    trip.setOdometerMissing(true);
-                }
-                trip.setAverageSpeed(trip.getDuration() > 0
-                        ? UnitsConverter.knotsFromMps(trip.getDistance() * 1000 / trip.getDuration()) : 0);
-            }
             trips.add(trip);
             previousTrip = trip;
+        }
+        if (canOdometer) {
+            applyCarOdometer(runs, trips);
         }
 
         if (reportClass.equals(TripReportItem.class)) {

@@ -207,9 +207,9 @@ public class TripReportItem extends BaseReportItem {
         this.endSuggestedNote = endSuggestedNote;
     }
 
-    // Device with the CAN odometer (attribute odometerSource = "can"): the
-    // trip's START or STOP record has no real odometer reading, so its
-    // odometer and distance are left empty - never estimated from GPS.
+    // Device with the car's odometer (attribute odometerSource = "odo"): no
+    // real reading brackets this trip yet, so odometer and distance are left
+    // empty until one arrives.
     private boolean odometerMissing;
 
     public boolean getOdometerMissing() {
@@ -218,5 +218,20 @@ public class TripReportItem extends BaseReportItem {
 
     public void setOdometerMissing(boolean odometerMissing) {
         this.odometerMissing = odometerMissing;
+    }
+
+    // odometerSource = "odo": the trip's own START/STOP had no reading; its
+    // odometer values are the real readings before and after the gap, with
+    // the km in between split over the trips in proportion to their GPS
+    // paths (the total always equals the car's odometer). Marked on the
+    // Trips screen only, not in the trip logbook.
+    private boolean odometerComputed;
+
+    public boolean getOdometerComputed() {
+        return odometerComputed;
+    }
+
+    public void setOdometerComputed(boolean odometerComputed) {
+        this.odometerComputed = odometerComputed;
     }
 }
