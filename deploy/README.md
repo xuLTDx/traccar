@@ -44,7 +44,7 @@ in order:
    password.
 2. `ota@ultd.sk` - narrowly-scoped, non-admin, readonly account for
    `ota_push_watcher.py`. Prompts for password (must match whatever's in
-   `/opt/freematics-ota/traccar_credentials.json` on the server, or update
+   `/home/freematics-ota/traccar_credentials.json` on the server, or update
    that file to match afterward).
 3. `assist@ultd.sk` - admin-capable (not full system administrator, but
    `readonly=false`) account for ad-hoc maintenance/cleanup tasks (e.g. safe

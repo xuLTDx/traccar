@@ -77,7 +77,7 @@ def main():
 
     print("\n=== 2. ota@ultd.sk (readonly, for ota_push_watcher.py) ===")
     ota_password = getpass.getpass(
-        "Password (must match /opt/freematics-ota/traccar_credentials.json on the server): ")
+        "Password (must match /home/freematics-ota/traccar_credentials.json on the server): ")
     ota_user = post(admin_opener, "/api/users", {
         "name": "ota@ultd.sk", "email": "ota@ultd.sk", "password": ota_password,
         "readonly": True,
@@ -122,7 +122,7 @@ def main():
     print(f"Set odometerAnchorReal={real_km * 1000}, odometerAnchorDistance=0, odometerFactor={factor}")
 
     print("\nDone. Don't forget: if ota@ultd.sk's password here differs from what's already in "
-          "/opt/freematics-ota/traccar_credentials.json on the server, update that file to match.")
+          "/home/freematics-ota/traccar_credentials.json on the server, update that file to match.")
 
 
 if __name__ == "__main__":

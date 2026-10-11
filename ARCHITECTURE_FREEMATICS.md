@@ -204,7 +204,7 @@ systemd: traccar.service                    (User=traccar, /opt/traccar → /hom
      │     osmand.port     = 6002/tcp   (Traccar Android app)
      ├─ WebServer (Jetty) — REST API + static traccar-web build, :8082
      └─ freematics-ota (SEPARATE systemd unit, SEPARATE process,
-         /opt/freematics-ota) — pull-OTA HTTPS server, :6001
+         /home/freematics-ota) — pull-OTA HTTPS server, :6001
 ```
 
 `freematics-ota` is a standalone Python service (not part of the Java
@@ -375,7 +375,7 @@ race twice in one night before switching to this endpoint).
   `ota_server.py`'s `locations.csv` endpoint (§6) for the firmware's
   geofence-WiFi feature — **not** read anywhere else in the Java backend.
 
-## B6. `freematics-ota` (separate Python service, `/opt/freematics-ota`)
+## B6. `freematics-ota` (separate Python service, `/home/freematics-ota`)
 
 ```
 ota_server.py            HTTPS :6001, TLSThreadingHTTPServer (each accepted
